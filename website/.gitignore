@@ -1,0 +1,4 @@
+.openai/local/
+.openai/source-workflow/
+.openai/*.local.json
+node_modules/

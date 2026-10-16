@@ -1,0 +1,14 @@
+.DS_Store
+/.build/
+/dist/
+*.xlsx
+*.xls
+*.csv
+*.log
+runs/
+local-data/
+*.dmg
+*.zip
+*.p12
+*.mobileprovision
+.env*

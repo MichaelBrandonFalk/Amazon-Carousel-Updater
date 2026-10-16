@@ -1,0 +1,35 @@
+name: Build Versioned Mac App
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  mac:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify release version
+        run: |
+          VERSION="$(tr -d '\n' < VERSION)"
+          if [[ "$GITHUB_REF_TYPE" == tag && "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+            echo "Tag does not match VERSION" >&2
+            exit 1
+          fi
+      - name: Build universal app
+        run: bash scripts/build_mac.sh
+      - name: Test workbook parsing and embedded browser
+        run: bash scripts/test.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macOS-universal
+          path: |
+            dist/*.zip
+            dist/SHA256SUMS.txt
+      - name: Publish immutable version download
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.zip dist/SHA256SUMS.txt --title "Amazon Carousel Updater ${GITHUB_REF_NAME}" --notes-file release_notes.md --verify-tag
