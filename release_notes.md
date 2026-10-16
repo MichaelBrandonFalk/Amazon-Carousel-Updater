@@ -1,4 +1,6 @@
-# V1.2
+# V1.3
+
+V1.3 is the first published Windows/Linux release. V1.2 was a validation-only tag: its Windows release version check rejected CRLF line endings, so no release or site deployment was published. This release uses a shared, tested newline-independent validator and LF source checkout rules.
 
 - Add a standalone Windows 10/11 x64 installer and a Linux Mint 21/22 amd64 `.deb` package.
 - Keep the native universal Mac app and share the existing Slate browser driver across platforms.
