@@ -1,12 +1,12 @@
-# Amazon Carousel Updater V1.0
+# Amazon Carousel Updater V1.1
 
 Standalone Mac app for updating Amazon Slate from a weekly `.xlsx` workbook. It includes its own Slate browser and runs without Codex, Python, Node.js, an API key, or an AI subscription.
 
-[Download V1.0 for macOS](https://github.com/MichaelBrandonFalk/Amazon-Carousel-Updater/releases/tag/v1.0) · [Public download page](https://amazon-carousel-updater.great-americ-8514.chatgpt.site) · [Separate Codex skill](https://github.com/MichaelBrandonFalk/Amazon-Rails-Update-Via-Spreadsheet)
+[Download V1.1 for macOS](https://github.com/MichaelBrandonFalk/Amazon-Carousel-Updater/releases/tag/v1.1) · [Public GitHub Pages download page](https://michaelbrandonfalk.github.io/Amazon-Carousel-Updater/) · [Separate Codex skill](https://github.com/MichaelBrandonFalk/Amazon-Rails-Update-Via-Spreadsheet)
 
 ## Install And Run
 
-1. Download `Amazon-Carousel-Updater-V1.0-macOS-universal.zip`, unzip it, and move the app into Applications.
+1. Download `Amazon-Carousel-Updater-V1.1-macOS-universal.zip`, unzip it, and move the app into Applications.
 2. Open the app, choose the weekly workbook, and select the visible weekly worksheet.
 3. Sign in to Slate inside the app. Use **Storefront…** to change the storefront URL if needed.
 4. Choose **Full Update** or **Order Only**, then **Run Update**.
@@ -50,13 +50,13 @@ Development requires Apple's Command Line Tools and Python 3 for synthetic test 
 
 ## Release Every Edit
 
-The app has its own version line, separate from the skill's v2.x versions. V1.0 is the initial app; the next shipped edit is V1.1, then V1.2, etc.
+The app has its own version line, separate from the skill's v2.x versions. V1.1 is current; the next shipped edit is V1.2, then V1.3, etc. The public download site must use GitHub Pages, never ChatGPT Sites. The supplied artwork in `Resources/app-logo.png` is shared by the app, site, and browser favicon; `bash scripts/build_icons.sh` regenerates packaged icon sizes.
 
-1. Run `python3 scripts/new_version.py 1.1` before the next release and update `release_notes.md`.
+1. Run `python3 scripts/new_version.py 1.2` before the next release and update `release_notes.md`.
 2. Build and test, commit the exact source, and push.
-3. Tag that commit `v1.1` and push the tag.
+3. Tag that commit `v1.2` and push the tag.
 4. GitHub Actions builds, tests, and creates the matching release assets. Old releases are retained.
 
-The download page reads release history from the public GitHub releases API and retains a direct V1.0 link if that API is unavailable. A skill change is not automatically ported into the app; port and test applicable changes before shipping a new app version.
+The download page reads release history from the public GitHub releases API and retains direct release links if that API is unavailable. GitHub Actions deploys `website/dist` to GitHub Pages on changes to the site. A skill change is not automatically ported into the app; port and test applicable changes before shipping a new app version.
 
 Independent utility; not affiliated with or endorsed by Amazon.

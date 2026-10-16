@@ -47,6 +47,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
             guard let scriptURL = Bundle.main.url(forResource: "slate_driver", withExtension: "js") else { throw AppFailure("The app is missing its browser driver. Download a fresh release.") }
             driver = try String(contentsOf: scriptURL, encoding: .utf8)
             buildMenus()
+            if let logoURL = Bundle.main.url(forResource: "app-logo", withExtension: "png"), let logo = NSImage(contentsOf: logoURL) {
+                NSApp.applicationIconImage = logo
+            }
             buildWindow()
             NSApp.activate(ignoringOtherApps: true)
             if selfTest {
@@ -114,7 +117,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         root.addSubview(sidebar)
         let heading = NSTextField(labelWithString: "Amazon Carousel Updater")
         heading.font = .systemFont(ofSize: 20, weight: .semibold)
-        sidebar.addArrangedSubview(heading)
+        let brand = NSStackView(); brand.spacing = 10; brand.alignment = .centerY
+        if let logoURL = Bundle.main.url(forResource: "app-logo", withExtension: "png"), let logo = NSImage(contentsOf: logoURL) {
+            let logoView = NSImageView(image: logo)
+            logoView.imageScaling = .scaleProportionallyUpOrDown
+            logoView.widthAnchor.constraint(equalToConstant: 44).isActive = true
+            logoView.heightAnchor.constraint(equalToConstant: 44).isActive = true
+            brand.addArrangedSubview(logoView)
+        }
+        brand.addArrangedSubview(heading)
+        sidebar.addArrangedSubview(brand)
         let versionLabel = NSTextField(labelWithString: "V\(version)  •  Pure Flix / Amazon Slate")
         versionLabel.font = .systemFont(ofSize: 11); versionLabel.textColor = .secondaryLabelColor
         sidebar.addArrangedSubview(versionLabel)

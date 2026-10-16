@@ -3,6 +3,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 VERSION="$(tr -d '\n' < VERSION)"
+bash scripts/build_icons.sh
 APP_NAME="Amazon Carousel Updater V${VERSION}"
 APP="dist/${APP_NAME}.app"
 mkdir -p .build dist "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -16,6 +17,7 @@ done
 lipo -create .build/updater-arm64 .build/updater-x86_64 -output "$APP/Contents/MacOS/CarouselUpdater"
 cp Resources/slate_driver.js "$APP/Contents/Resources/"
 cp Resources/slate_fixture.html "$APP/Contents/Resources/"
+cp Resources/app-logo.png "$APP/Contents/Resources/"
 if [[ -f Resources/AppIcon.icns ]]; then cp Resources/AppIcon.icns "$APP/Contents/Resources/"; fi
 /usr/libexec/PlistBuddy -c 'Clear dict' "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleExecutable string CarouselUpdater" "$APP/Contents/Info.plist"

@@ -1,4 +1,13 @@
-# V1.0
+# V1.1
+
+- Move the public download page to GitHub Pages; retire ChatGPT Sites deployment configuration.
+- Use the supplied carousel artwork for the Mac app icon, app header, website logo, and browser favicon.
+- Rebuild icon sizes from the canonical artwork for every Mac build.
+- Preserve V1.0 downloads and the existing carousel update behavior.
+
+Validation: synthetic workbook tests and embedded-browser workflow test. The app remains a preview, ad-hoc signed and not Apple-notarized. A supervised real storefront run is still required.
+
+## V1.0
 
 Initial preview release of the standalone Amazon Carousel Updater for macOS 12+ (Apple Silicon and Intel).
 
