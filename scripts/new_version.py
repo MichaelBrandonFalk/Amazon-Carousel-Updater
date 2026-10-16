@@ -30,5 +30,5 @@ if lock.exists():
     metadata["packages"][""]["version"] = requested + ".0"
     lock.write_text(json.dumps(metadata, indent=2) + "\n")
 readme = root / "README.md"
-readme.write_text(readme.read_text().replace(f"Updater V{current}", f"Updater V{requested}").replace(f"Download V{current}", f"Download V{requested}").replace(f"tag/v{current}", f"tag/v{requested}").replace(f"-V{current}-macOS", f"-V{requested}-macOS"))
+readme.write_text(readme.read_text().replace(f"Updater V{current}", f"Updater V{requested}").replace(f"Download V{current}", f"Download V{requested}").replace(f"tag/v{current}", f"tag/v{requested}").replace(f"-V{current}-", f"-V{requested}-"))
 print(f"Next version: V{requested}. Update release_notes.md, build, test, commit, and tag v{requested}.")

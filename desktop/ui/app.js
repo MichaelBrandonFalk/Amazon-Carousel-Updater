@@ -21,7 +21,7 @@ function render(state) {
     }
     return row;
   }));
-  for (const id of ['workbook', 'mode', 'open', 'back', 'reload', 'settings']) $(id).disabled = state.busy || pending;
+  for (const id of ['workbook', 'mode', 'open', 'back', 'reload', 'settings', 'export']) $(id).disabled = state.busy || pending;
   $('run').disabled = state.busy || !sheet || pending; $('stop').disabled = !state.busy;
   $('publish').disabled = state.busy || !state.staged || pending;
   $('progress').value = state.progress; $('status').textContent = state.status;

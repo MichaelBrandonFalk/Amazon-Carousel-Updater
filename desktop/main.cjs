@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, session, protocol, ipcMain, dialog, Menu } = require('electron');
+const { app, BrowserWindow, WebContentsView, session, protocol, ipcMain, dialog, Menu, screen } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -127,7 +127,8 @@ async function start() {
   isolated.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   isolated.setPermissionCheckHandler(() => false);
   isolated.on('will-download', event => event.preventDefault());
-  win = new BrowserWindow({ width: 1420, height: 940, minWidth: 1100, minHeight: 800, title: `Amazon Carousel Updater V${version}`, icon: path.join(root, 'Resources/app-logo.png'), backgroundColor: '#f5f7f6', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
+  const area = screen.getPrimaryDisplay().workAreaSize;
+  win = new BrowserWindow({ width: Math.min(1420, area.width), height: Math.min(940, area.height), minWidth: 960, minHeight: 640, title: `Amazon Carousel Updater V${version}`, icon: path.join(root, 'Resources/app-logo.png'), backgroundColor: '#f5f7f6', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
   guest = new WebContentsView({ webPreferences: { session: isolated, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, allowRunningInsecureContent: false, navigateOnDragDrop: false } });
   win.contentView.addChildView(guest);
   const resize = () => { const [width, height] = win.getContentSize(); guest.setBounds({ x: 390, y: 54, width: width - 390, height: height - 54 }); };
