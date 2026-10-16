@@ -1,6 +1,7 @@
 """Advance the next app release without overwriting an existing version."""
 from pathlib import Path
 import re
+import json
 import subprocess
 import sys
 
@@ -17,6 +18,17 @@ existing = subprocess.run(["git", "tag", "--list", "v" + requested], cwd=root, c
 if existing.stdout.strip():
     raise SystemExit("That version already has a release tag.")
 (root / "VERSION").write_text(requested + "\n")
+package = root / "package.json"
+if package.exists():
+    metadata = json.loads(package.read_text())
+    metadata["version"] = requested + ".0"
+    package.write_text(json.dumps(metadata, indent=2) + "\n")
+lock = root / "package-lock.json"
+if lock.exists():
+    metadata = json.loads(lock.read_text())
+    metadata["version"] = requested + ".0"
+    metadata["packages"][""]["version"] = requested + ".0"
+    lock.write_text(json.dumps(metadata, indent=2) + "\n")
 readme = root / "README.md"
 readme.write_text(readme.read_text().replace(f"Updater V{current}", f"Updater V{requested}").replace(f"Download V{current}", f"Download V{requested}").replace(f"tag/v{current}", f"tag/v{requested}").replace(f"-V{current}-macOS", f"-V{requested}-macOS"))
 print(f"Next version: V{requested}. Update release_notes.md, build, test, commit, and tag v{requested}.")

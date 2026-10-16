@@ -1,8 +1,6 @@
 name: Publish GitHub Pages Download Site
 on:
-  push:
-    branches: [main]
-    paths: ['website/dist/**', '.github/workflows/pages.yml']
+  workflow_call:
   workflow_dispatch:
 permissions:
   contents: read

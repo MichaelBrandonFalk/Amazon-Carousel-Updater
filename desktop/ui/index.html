@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Amazon Carousel Updater</title><link rel="icon" href="logo.png"><link rel="stylesheet" href="app.css"></head>
+<body>
+<aside>
+  <header><img src="logo.png" alt="" width="44" height="44"><h1>Amazon Carousel Updater</h1></header>
+  <p class="version" id="version">Pure Flix / Amazon Slate</p>
+  <button id="workbook">Choose Workbook</button><p id="filename">No workbook selected</p>
+  <label class="sr-only" for="sheet">Weekly worksheet</label><select id="sheet" disabled><option>No worksheet</option></select>
+  <fieldset id="mode"><legend class="sr-only">Update mode</legend><label><input type="radio" name="mode" value="full" checked>Full Update</label><label><input type="radio" name="mode" value="order">Order Only</label></fieldset>
+  <p class="hint">Full Update saves each carousel immediately. Publish Order applies the final storefront order.</p>
+  <div class="rail-table"><table><thead><tr><th>A</th><th>Carousel</th><th>Status</th></tr></thead><tbody id="rails"></tbody></table></div>
+  <div class="actions"><button id="run" class="primary" disabled>Run Update</button><button id="stop" disabled>Stop</button></div>
+  <button id="publish" disabled>Publish Order</button>
+  <progress id="progress" max="100" value="0" aria-label="Update progress"></progress>
+  <p id="status" role="status">Select your weekly workbook</p>
+  <pre id="logs" aria-label="Run log"></pre><button id="export">Export Report</button>
+</aside>
+<nav aria-label="Slate browser"><button id="open">Open Slate</button><button id="back" title="Back" aria-label="Back">&#8592;</button><button id="reload" title="Reload" aria-label="Reload">&#8635;</button><span id="page">Amazon Slate - private session</span><button id="settings">Storefront</button></nav>
+<dialog id="storefront-dialog"><form id="storefront-form"><h2>Slate storefront</h2><label for="storefront-url">Overview URL</label><input id="storefront-url" type="url" required><div class="dialog-actions"><button id="cancel-storefront" type="button">Cancel</button><button type="submit" class="primary">Save</button></div></form></dialog>
+<dialog id="error-dialog"><h2>Update needs attention</h2><p id="error-message"></p><button id="close-error">OK</button></dialog>
+<script src="app.js"></script>
+</body></html>
