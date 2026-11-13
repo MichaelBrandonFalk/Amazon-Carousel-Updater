@@ -13,14 +13,52 @@ function node(tag,attrs={},value=''){const el=document.createElement(tag);for(co
 function btn(label,fn){const b=node('button',{},label);b.onclick=fn;return b}
 const content=document.getElementById('content');
 function renderOverview(){current=null;content.replaceChildren();const title=node('h2',{},'Storefront carousels');content.append(title,btn('Publish changes',()=>{if(!window.fixtureRejectPublish){data.order=draft.slice();data.published++;persist()}const toast=node('div',{class:'toast'},'Successfully re-ordered carousels.');content.prepend(toast)}));for(let i=0;i<draft.length;i++){const name=draft[i];const row=node('div',{class:'storefront-carousel'});const h=node('div',{class:'storefront-carousel-header'});h.append(node('span',{},`${i+1}: ${name}`));const down=btn('↓',()=>{if(i+1<draft.length){[draft[i],draft[i+1]]=[draft[i+1],draft[i]];renderOverview()}});down.className='storefront-carousel-action-caret-button';const up=btn('↑',()=>{if(i>0){[draft[i],draft[i-1]]=[draft[i-1],draft[i]];renderOverview()}});up.className='storefront-carousel-action-caret-button';h.append(down,up);if(data.pins[name])h.append(btn('Edit',()=>renderEditor(name)));row.append(h,node('div',{class:'preview'},(data.pins[name]||['Dynamic carousel']).slice(0,6).join(' · ')));content.append(row)}}
-function renderEditor(name){current=name;titles=data.pins[name].slice();content.replaceChildren();const nav=node('nav',{'aria-label':'breadcrumb'});const back=node('a',{role:'button'},'Overview');back.onclick=renderOverview;nav.append(back,document.createTextNode(' '+name));content.append(nav,node('h2',{},name),btn('Publish',renderModal));
+function renderEditor(name){lifted=null;current=name;titles=data.pins[name].slice();content.replaceChildren();const nav=node('nav',{'aria-label':'breadcrumb'});const back=node('a',{role:'button'},'Overview');back.onclick=renderOverview;nav.append(back,document.createTextNode(' '+name));
+ const publish=name==='Romance'?node('a',{href:'#'},'Publish changes'):node('input',{type:'button',value:'Publish'});
+ publish.addEventListener('click',event=>{event.preventDefault();renderModal()});content.append(nav,node('h2',{},name),publish);
  const decoy=node('div',{class:'carousel-section title-inclusions'});decoy.append(node('h3',{},'Title inclusions'),node('input',{class:'title-search-input',placeholder:'Search for titles by name or ASIN'}),node('div',{},'Protected inclusion list'));content.append(decoy);
  const section=node('div',{class:'carousel-section '+(name==='Faith Favorites'?'title-collection':'title-pinnings')});section.append(node('h3',{},name==='Faith Favorites'?'Title collection':'Title pinnings'));
  const search=node('div',{class:'title-search'});const input=node('input',{class:'title-search-input',placeholder:'Search for titles by name or ASIN'});const results=node('div',{class:'results'});input.addEventListener('input',()=>{clearTimeout(searchTimer);results.replaceChildren();searchTimer=setTimeout(()=>{for(const title of catalog.filter(t=>t.toLowerCase().includes(input.value.toLowerCase())&&input.value)){const result=node('div',{class:'result'},title);result.onclick=()=>{titles.push(title);input.value='';results.replaceChildren();renderRows()};results.append(result)}},200)});search.append(input,results);section.append(search);const list=node('div',{class:'title-pinning title-pinning-droppable'});section.append(list);content.append(section);
  const excluded=node('div',{class:'carousel-section title-exclusions'});excluded.append(node('h3',{},'Title exclusions'),node('input',{class:'title-search-input'}),node('div',{},'Protected exclusion list'));content.append(excluded);
- function renderRows(){list.replaceChildren();titles.forEach((title,i)=>{const row=node('div',{class:'title-pinning-draggable',role:'button',tabindex:'0'});row.append(node('span',{},String(i+1)),node('span',{},title),btn('Remove',()=>{throw Error('Removal is forbidden in this test')}));row.addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();lifted=lifted===null?title:null}else if(lifted===title&&(e.code==='ArrowUp'||e.code==='ArrowDown')){e.preventDefault();const source=titles.indexOf(title),dest=source+(e.code==='ArrowUp'?-1:1);if(dest>=0&&dest<titles.length){[titles[source],titles[dest]]=[titles[dest],titles[source]]}}else if(e.code==='Escape'){lifted=null}});row.addEventListener('keyup',e=>{if(e.code==='Space'&&lifted===null){renderRows()}});list.append(row)})}
+ function renderRows(){
+  list.replaceChildren();
+  titles.forEach((title,i)=>{
+   const row=node('div',{class:'title-pinning-draggable'});
+   const handle=node('span',{role:'button',tabindex:'0','data-rbd-drag-handle-draggable-id':title,'aria-label':'Reorder '+title});
+   handle.style.cssText='display:inline-block;width:12px;height:20px;background:#b9c7c1';
+   row.append(handle,node('span',{},String(i+1)),node('span',{},title),btn('Remove',()=>{window.fixtureRemoveAttempts=(window.fixtureRemoveAttempts||0)+1;throw Error('Removal is forbidden in this test')}));
+   handle.addEventListener('keydown',event=>{
+    if(!event.isTrusted){window.fixtureRejectedKeys=(window.fixtureRejectedKeys||0)+1;return}
+    window.fixtureTrustedKeys=(window.fixtureTrustedKeys||0)+1;
+    if(!['Space','ArrowUp','ArrowDown','Escape'].includes(event.code))return;
+    event.preventDefault();
+    const announce=message=>{document.getElementById('rbd-announcement-synthetic').textContent=message};
+    if(event.code==='Escape'){lifted=null;renderRows();return}
+    if(window.fixtureIgnoreDrag)return;
+    if(event.code==='Space'){
+     if(!lifted){lifted={title,index:i,source:i,animating:false};announce('You have lifted the item in position '+(i+1));return}
+     if(lifted.animating)return;
+     const move=lifted;lifted=null;
+     setTimeout(()=>{titles.splice(move.source,1);titles.splice(move.index,0,move.title);renderRows();announce('You have dropped the item in position '+(move.index+1))},100);
+    }else if(lifted&&lifted.title===title&&!lifted.animating){
+     const destination=lifted.index+(event.code==='ArrowUp'?-1:1);
+     if(destination<0||destination>=titles.length)return;
+     lifted.animating=true;
+     setTimeout(()=>{if(!lifted)return;lifted.index=destination;lifted.animating=false;row.style.transform='translateY('+((destination-i)*60)+'px)';announce('You have moved the item to position '+(destination+1));if(window.fixtureStealFocus)row.querySelector('button').focus()},180);
+    }
+   });
+   list.append(row);
+  });
+ }
  renderRows();
 }
-function renderModal(){const modal=node('div',{role:'dialog'});modal.append(node('h2',{},'Schedule carousel'),node('div',{},'When do you want to publish this carousel?'));for(let group=0;group<2;group++){if(group===1)modal.append(node('div',{},'When do you want to remove this carousel from the storefront?'));for(let i=0;i<2;i++){const r=node('input',{type:'radio',name:'date'+group});r.checked=i===0;modal.append(r,node('span',{},i===0?'Open ended':'Scheduled date'))}for(let i=0;i<2;i++)modal.append(node('input',{type:'number',disabled:''}))}modal.append(node('div',{},'Position'));const position=node('input',{type:'number'});modal.append(position,btn('Cancel',()=>modal.remove()),btn('Schedule',()=>{data.pins[current]=titles.slice();data.saved.push({name:current,position:Number(position.value)});persist();modal.remove();renderOverview()}));content.append(modal)}
+function renderSavedRecord(name){
+ current=null;content.replaceChildren();
+ const nav=node('nav',{'aria-label':'breadcrumb'}),back=node('a',{href:'#'},'Overview');
+ back.onclick=event=>{event.preventDefault();renderOverview()};nav.append(back);
+ content.append(nav,node('h2',{},name),node('p',{},'Saved carousel record'));
+}
+function renderModal(){const modal=node('div',{role:'dialog'});modal.append(node('h2',{},'Schedule carousel'),node('div',{},'When do you want to publish this carousel?'));for(let group=0;group<2;group++){if(group===1)modal.append(node('div',{},'When do you want to remove this carousel from the storefront?'));for(let i=0;i<2;i++){const r=node('input',{type:'radio',name:'date'+group});r.checked=i===0;modal.append(r,node('span',{},i===0?'Open ended':'Scheduled date'))}for(let i=0;i<2;i++)modal.append(node('input',{type:'number',disabled:''}))}modal.append(node('div',{},'Position'));const position=node('input',{type:'number'});modal.append(position,btn('Cancel',()=>modal.remove()),btn('Schedule',()=>{const name=current;data.pins[name]=titles.slice();data.saved.push({name,position:Number(position.value)});persist();modal.remove();renderSavedRecord(name)}));content.append(modal)}
+const announcement=node('div',{id:'rbd-announcement-synthetic','aria-live':'assertive'});announcement.style.cssText='position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)';document.body.append(announcement);
 renderOverview();
 </script></html>

@@ -1,21 +1,21 @@
-# Amazon Carousel Updater V1.3
+# Amazon Carousel Updater V1.4
 
 Standalone desktop app for updating Amazon Slate from a weekly `.xlsx` workbook. Available for macOS, Windows, and Linux Mint. Every distribution includes its own Slate browser and runs without separately installing Codex, Python, Node.js, or an AI subscription/API key.
 
-[Download V1.3](https://github.com/MichaelBrandonFalk/Amazon-Carousel-Updater/releases/tag/v1.3) · [Public GitHub Pages download page](https://michaelbrandonfalk.github.io/Amazon-Carousel-Updater/) · [Separate Codex skill](https://github.com/MichaelBrandonFalk/Amazon-Rails-Update-Via-Spreadsheet)
+[Download V1.4](https://github.com/MichaelBrandonFalk/Amazon-Carousel-Updater/releases/tag/v1.4) · [Public GitHub Pages download page](https://michaelbrandonfalk.github.io/Amazon-Carousel-Updater/) · [Separate Codex skill](https://github.com/MichaelBrandonFalk/Amazon-Rails-Update-Via-Spreadsheet)
 
 ## Platform Downloads
 
 | Platform | File | Installation |
 | --- | --- | --- |
-| macOS 12+, Intel and Apple Silicon | `Amazon-Carousel-Updater-V1.3-macOS-universal.zip` | Unzip and move the app to Applications. |
-| Windows 10/11 x64 | `Amazon-Carousel-Updater-V1.3-Windows-x64-Setup.exe` | Run the installer; launch from the Start menu. No administrator install required. |
-| Linux Mint 21.x/22.x, Intel/AMD 64-bit | `Amazon-Carousel-Updater-V1.3-Linux-amd64.deb` | Open with Package Installer, then launch from the Mint menu. |
+| macOS 12+, Intel and Apple Silicon | `Amazon-Carousel-Updater-V1.4-macOS-universal.zip` | Unzip and move the app to Applications. |
+| Windows 10/11 x64 | `Amazon-Carousel-Updater-V1.4-Windows-x64-Setup.exe` | Run the installer; launch from the Start menu. No administrator install required. |
+| Linux Mint 21.x/22.x, Intel/AMD 64-bit | `Amazon-Carousel-Updater-V1.4-Linux-amd64.deb` | Open with Package Installer, then launch from the Mint menu. |
 
 Linux terminal installation from the download directory:
 
 ```bash
-sudo apt install ./Amazon-Carousel-Updater-V1.3-Linux-amd64.deb
+sudo apt install ./Amazon-Carousel-Updater-V1.4-Linux-amd64.deb
 amazon-carousel-updater
 ```
 
@@ -25,7 +25,7 @@ The `.deb` targets standard Ubuntu-based Mint, not ARM or a universal Linux bina
 
 1. Download and install the matching platform distribution above.
 2. Open the app, choose the weekly workbook, and select the visible weekly worksheet.
-3. Sign in to Slate inside the app. Use **Storefront…** to change the storefront URL if needed.
+3. For a reusable sign-in, select **Remember sign-in** before logging in once inside the app. Leave it off for a private session. Use **Storefront…** to change the storefront URL if needed.
 4. Choose **Full Update** or **Order Only**, then **Run Update**.
 5. Review any unresolved titles and the result. Click **Publish Order…** to apply the final carousel order.
 
@@ -40,6 +40,7 @@ Review the source and use your organization's approved installation process. Old
 - Add missing exact catalog matches and reorder existing titles. Preserve every existing title, including duplicate entries and their relative order outside the leading targets.
 - Title inclusions and Title exclusions are never edited. Dynamic/Leaving Soon rows skip content edits.
 - A missing or ambiguous catalog match leaves that carousel unchanged and appears in the report.
+- Catalog lookup and selection errors are reported without stopping later carousels. The affected carousel is not saved; no guessed titles are added. Check the run log or export the report for the unresolved titles.
 - Broad series names reuse the first matching existing season on that rail. The app records the resolved title in its report. It does not guess new seasons from search results.
 - Scheduling uses the workbook Position value. The final storefront order separately reserves slot 1 for Top 10.
 - Publish is verified after a reload. A success toast followed by a different saved order is a failure, not a completed update.
@@ -50,11 +51,15 @@ Known explicit workbook aliases include WHC, Iggy and Mr. Krik, Watchmaker, and 
 
 Workbooks are parsed locally in memory: built-in ZIP/XML tools on Mac, bundled ZIP/XML readers on Windows/Linux. Formulas are never executed; hidden worksheets are ignored. The app sends requested title searches and merchandising updates to Amazon only. There is no analytics service or workbook-upload endpoint.
 
-The browser uses a nonpersistent session (WebKit on Mac, Chromium on Windows/Linux). Passwords are entered directly on Amazon's sign-in page; the app never reads password fields or exports cookies. Sign in again after quitting. Browser sessions, workbooks, and run logs are never included in builds, GitHub, or the public site. Reports remain in memory unless the operator exports one. The storefront URL is the only saved app preference. Windows/Linux keep Amazon in a sandboxed, Node-disabled `WebContentsView`, separate from the trusted local controls and workbook reader; permissions, remote IPC, extra windows and non-Amazon navigation are blocked.
+Private sessions are the default. **Remember sign-in** is an explicit opt-in that keeps Amazon's browser session on this computer using WebKit's default data store on Mac or a persistent Chromium partition on Windows/Linux. Enable it before signing in: switching modes restarts the browser and discards unsaved drafts, so sign in once in the remembered browser. Later launches can reuse that session, but Amazon can still require sign-in or MFA. Use remembered sessions only on a trusted, access-controlled computer.
+
+To clear it, uncheck **Remember sign-in**, use **File > Forget Amazon Sign-In** on Mac, or click **Forget sign-in** on Windows/Linux. Saved website data is deleted and the browser returns to private mode; published carousel changes are not undone. Tests always use isolated private sessions and never enable or clear an operator's real saved sign-in.
+
+Passwords are entered directly on Amazon's page; the app never records passwords or exports authentication data. Local session data, weekly workbooks, and run logs are never included in builds, GitHub, or the public site. Reports stay in memory unless explicitly exported. Only the storefront URL and remembered-sign-in preference are saved in app preferences. Windows/Linux keep Amazon in a sandboxed, Node-disabled `WebContentsView`, separate from the trusted local controls and workbook reader; permissions, remote IPC, extra windows and non-Amazon navigation are blocked.
 
 ## Verification Status
 
-All distributions remain preview builds. Tests cover visible worksheet selection, query/collection lists, search/add, keyboard reordering, duplicate-title preservation, Column A positions, unresolved-title skips, order-only mode, and publish/reload verification. CI builds and runs the Windows app, installs/tests the Linux `.deb` on Ubuntu 22.04 and 24.04 (the bases for Mint 21 and 22), and tests the native Mac app. This is not a full Mint desktop or supervised production Slate test. A supervised real storefront run is still required on each platform. The separate Codex skill's production use does not establish that these desktop wrappers have passed production testing.
+All distributions remain preview builds. Tests cover visible worksheet selection, query/collection lists, search/add, native browser keyboard input, nested drag handles, asynchronous drag/drop, lost-focus protection against Remove, link/input Publish controls, post-save editor navigation, retry from an editor, preservation, Column A positions, missing-title continuation, order-only mode, and publish/reload verification. The synthetic drag fixture rejects JavaScript-created keyboard events; it does not reproduce every possible production Slate behavior. CI builds and runs Windows, installs/tests the Linux `.deb` on Ubuntu 22.04/24.04 (the Mint 21/22 bases), and tests the native Mac app. A supervised real storefront run is still needed on each platform; no live save is performed as part of regression testing.
 
 ## Build And Test
 
@@ -80,11 +85,11 @@ Package on the matching operating system. Runtime dependencies are locked and pr
 
 ## Release Every Edit
 
-The app has its own version line, separate from the skill's v2.x versions. V1.3 is current; the next shipped edit is V1.4, then V1.5, etc. V1.2 was an unpublished validation tag. The public download site must use GitHub Pages, never ChatGPT Sites. The supplied artwork in `Resources/app-logo.png` is shared by all platforms, the site, and browser favicon; `bash scripts/build_icons.sh` regenerates Mac/site icon sizes. Electron packaging converts the same original artwork for Windows/Linux.
+The app has its own version line, separate from the skill's v2.x versions. V1.4 is current; the next shipped edit is V1.5, then V1.6, etc. V1.2 was an unpublished validation tag. The public download site must use GitHub Pages, never ChatGPT Sites. The supplied artwork in `Resources/app-logo.png` is shared by all platforms, the site, and browser favicon; `bash scripts/build_icons.sh` regenerates Mac/site icon sizes. Electron packaging converts the same original artwork for Windows/Linux.
 
-1. Run `python3 scripts/new_version.py 1.4` before the next release and update `release_notes.md` and the site's static download links.
+1. Run `python3 scripts/new_version.py 1.5` before the next release and update `release_notes.md` and the site's static download links.
 2. Build and test, commit the exact source, and push.
-3. Use the release workflow's manual dispatch to validate all platforms before tagging. Then tag that exact commit `v1.4` and push the tag.
+3. Use the release workflow's manual dispatch to validate all platforms before tagging. Then tag that exact commit `v1.5` and push the tag.
 4. GitHub Actions builds/tests all three platforms, creates a release with all installers plus SHA256 checksums, and only then deploys the matching GitHub Pages download site. A failing platform blocks publication. Old releases are retained.
 
 The download page reads per-platform release history from the public GitHub releases API and retains direct release links if that API is unavailable. `website/dist` is deployed to GitHub Pages by the release workflow (or a manual Pages dispatch), not immediately on every source push. A skill change is not automatically ported into the app; port and test applicable changes before shipping a new app version.

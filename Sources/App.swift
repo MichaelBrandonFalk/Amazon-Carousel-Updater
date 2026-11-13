@@ -19,6 +19,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
     var importButton = NSButton()
     var openButton = NSButton()
     var settingsButton = NSButton()
+    var rememberButton = NSButton()
+    var browserToolbar: NSStackView!
+    var rememberSignIn: Bool { !selfTest && UserDefaults.standard.bool(forKey: "rememberAmazonSignIn") }
     var sessionLabel = NSTextField(labelWithString: "Open Slate to sign in")
     var statusLabel = NSTextField(wrappingLabelWithString: "Select your weekly workbook")
     var logView = NSTextView()
@@ -86,6 +89,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         let fileItem = NSMenuItem(), fileMenu = NSMenu(title: "File")
         fileMenu.addItem(withTitle: "Open Workbook…", action: #selector(chooseWorkbook), keyEquivalent: "o")
         fileMenu.addItem(withTitle: "Export Run Report…", action: #selector(exportReport), keyEquivalent: "s")
+        fileMenu.addItem(withTitle: "Forget Amazon Sign-In…", action: #selector(forgetSignIn), keyEquivalent: "")
         fileItem.submenu = fileMenu; menu.addItem(fileItem)
         let editItem = NSMenuItem(), editMenu = NSMenu(title: "Edit")
         for (title, selector, key) in [("Undo", "undo:", "z"), ("Cut", "cut:", "x"), ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] {
@@ -165,6 +169,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         let export = makeButton("Export Report…", symbol: "square.and.arrow.up", action: #selector(exportReport)); sidebar.addArrangedSubview(export)
         let browserPanel = NSView(); browserPanel.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(browserPanel)
         let toolbar = NSStackView(); toolbar.spacing = 8; toolbar.translatesAutoresizingMaskIntoConstraints = false
+        browserToolbar = toolbar
         openButton = makeButton("Open Slate", symbol: "globe", action: #selector(openSlate))
         settingsButton = makeButton("Storefront…", symbol: "gearshape", action: #selector(setStorefront))
         toolbar.addArrangedSubview(openButton)
@@ -172,15 +177,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         toolbar.addArrangedSubview(back)
         let refresh = makeButton("", symbol: "arrow.clockwise", action: #selector(refreshPage)); refresh.toolTip = "Reload"
         toolbar.addArrangedSubview(refresh)
+        rememberButton = NSButton(checkboxWithTitle: "Remember sign-in", target: self, action: #selector(toggleRememberSignIn))
+        rememberButton.state = rememberSignIn ? .on : .off
+        rememberButton.toolTip = "Keep the Amazon session on this Mac. This app never records your password."
+        toolbar.addArrangedSubview(rememberButton)
         sessionLabel.font = .systemFont(ofSize: 11); sessionLabel.textColor = .secondaryLabelColor
         sessionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         toolbar.addArrangedSubview(sessionLabel); toolbar.addArrangedSubview(settingsButton)
         browserPanel.addSubview(toolbar)
-        let config = WKWebViewConfiguration()
-        config.websiteDataStore = .nonPersistent()
-        config.preferences.javaScriptCanOpenWindowsAutomatically = false
-        webView = WKWebView(frame: .zero, configuration: config)
-        webView.navigationDelegate = self; webView.uiDelegate = self
+        webView = makeBrowser()
         webView.translatesAutoresizingMaskIntoConstraints = false; browserPanel.addSubview(webView)
         NSLayoutConstraint.activate([
             sidebar.leadingAnchor.constraint(equalTo: root.leadingAnchor), sidebar.topAnchor.constraint(equalTo: root.topAnchor), sidebar.bottomAnchor.constraint(equalTo: root.bottomAnchor), sidebar.widthAnchor.constraint(equalToConstant: 390),
@@ -191,6 +196,52 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         for item in [fileLabel, sheetPopup, mode, timing, tableScroll, progress, statusLabel, logScroll] { item.widthAnchor.constraint(equalTo: sidebar.widthAnchor, constant: -36).isActive = true }
         window.makeKeyAndOrderFront(nil)
         updateControls()
+    }
+
+    func makeBrowser() -> WKWebView {
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = rememberSignIn ? .default() : .nonPersistent()
+        config.preferences.javaScriptCanOpenWindowsAutomatically = false
+        let browser = WKWebView(frame: .zero, configuration: config)
+        browser.navigationDelegate = self; browser.uiDelegate = self
+        return browser
+    }
+    func replaceBrowser() {
+        guard let parent = webView.superview else { return }
+        webView.stopLoading(); webView.removeFromSuperview()
+        webView = makeBrowser(); webView.translatesAutoresizingMaskIntoConstraints = false
+        parent.addSubview(webView)
+        NSLayoutConstraint.activate([
+            webView.leadingAnchor.constraint(equalTo: parent.leadingAnchor), webView.trailingAnchor.constraint(equalTo: parent.trailingAnchor),
+            webView.topAnchor.constraint(equalTo: browserToolbar.bottomAnchor, constant: 12), webView.bottomAnchor.constraint(equalTo: parent.bottomAnchor)
+        ])
+        stagedOrder = nil; rememberButton.state = rememberSignIn ? .on : .off
+        updateControls(); openSlate()
+    }
+    @objc func toggleRememberSignIn() {
+        guard !busy, !selfTest else { rememberButton.state = rememberSignIn ? .on : .off; return }
+        if rememberButton.state == .off { forgetSignIn(); return }
+        let alert = NSAlert(); alert.messageText = "Remember Amazon sign-in on this Mac?"
+        alert.informativeText = "Amazon session data will stay in this app's local WebKit storage until you forget it. This app does not record your password or send session data to GitHub. Use only on a trusted computer. The browser will restart; sign in once in the remembered browser. Unsaved drafts will be discarded. Amazon may still request sign-in or MFA later."
+        alert.addButton(withTitle: "Remember Sign-In"); alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { rememberButton.state = .off; return }
+        UserDefaults.standard.set(true, forKey: "rememberAmazonSignIn"); replaceBrowser()
+        statusLabel.stringValue = "Sign in once • session will be remembered"
+    }
+    @objc func forgetSignIn() {
+        guard !busy, !selfTest else { return }
+        let alert = NSAlert(); alert.messageText = "Forget Amazon sign-in on this Mac?"
+        alert.informativeText = "Delete this app's saved website data and start a private session. Unsaved drafts will be discarded. Saved Amazon carousel changes will not be undone."
+        alert.addButton(withTitle: "Forget Sign-In"); alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { rememberButton.state = rememberSignIn ? .on : .off; return }
+        busy = true; updateControls()
+        UserDefaults.standard.set(false, forKey: "rememberAmazonSignIn")
+        replaceBrowser()
+        WKWebsiteDataStore.default().removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) { [weak self] in
+            guard let self = self else { return }
+            self.busy = false; self.updateControls(); self.openSlate()
+            self.statusLabel.stringValue = "Saved sign-in cleared • private session"
+        }
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { selectedSheet?.rails.count ?? 0 }
@@ -252,6 +303,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         stopButton.isEnabled = busy
         importButton.isEnabled = !busy; sheetPopup.isEnabled = !busy && !sheets.isEmpty; mode.isEnabled = !busy
         openButton.isEnabled = !busy; settingsButton.isEnabled = !busy
+        rememberButton.isEnabled = !busy && !selfTest
         publishButton.isEnabled = !busy && stagedOrder != nil
     }
     func log(_ message: String) {
@@ -267,7 +319,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
     func pause(_ milliseconds: UInt64) async throws { try checkCancelled(); try await Task.sleep(nanoseconds: milliseconds * 1_000_000); try checkCancelled() }
 
     func call(_ command: String, _ input: [String: Any] = [:]) async throws -> [String: Any] {
-        if command != "cancel" { try checkCancelled() }
+        if command != "cancel" && command != "titleKeyTarget" { try checkCancelled() }
+        if command == "moveTitle" { return try await moveTitleWithNativeKeys(input) }
         guard selfTest || webView.url?.host == "slate.amazon.com" else { throw AppFailure("Sign in to Amazon in the app browser, then open the Slate storefront before running.") }
         if !selfTest, let target = URL(string: storefront) {
             let prefix = target.path.replacingOccurrences(of: "storefront/overview", with: "")
@@ -283,6 +336,35 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         }
         guard let json = value as? String, let data = json.data(using: .utf8), let result = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw AppFailure("Slate returned an unreadable browser response.") }
         return result
+    }
+    func sendTitleKey(_ key: String, allowCancelled: Bool = false) async throws {
+        if !allowCancelled { try checkCancelled() }
+        guard try await call("titleKeyTarget")["safe"] as? Bool == true else { throw AppFailure("Focus left the title drag handle. No carousel was saved.") }
+        guard selfTest || webView.url?.host == "slate.amazon.com" else { throw AppFailure("The Slate browser lost focus. No carousel was saved.") }
+        let mapping: [String: (String, UInt16)] = ["Space": (" ", 49), "ArrowUp": ("\u{f700}", 126), "ArrowDown": ("\u{f701}", 125), "Escape": ("\u{1b}", 53)]
+        guard let (characters, code) = mapping[key], let responder = window.firstResponder as? NSView,
+              responder === webView || responder.isDescendant(of: webView) else { throw AppFailure("Focus left the Slate browser. No carousel was saved.") }
+        for type in [NSEvent.EventType.keyDown, .keyUp] {
+            guard let event = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code) else { throw AppFailure("Cannot create browser keyboard input.") }
+            window.sendEvent(event)
+        }
+    }
+    func moveTitleWithNativeKeys(_ input: [String: Any]) async throws -> [String: Any] {
+        window.makeFirstResponder(webView)
+        let move = try await call("prepareTitleMove", input)
+        guard let source = move["source"] as? Int, let target = move["position"] as? Int else { throw AppFailure("Cannot identify the title move.") }
+        if source == target { return try await call("pins") }
+        do {
+            try await sendTitleKey("Space"); try await pause(350)
+            for _ in 0..<abs(source - target) {
+                let previous = try await call("titleDragState")
+                try await sendTitleKey(source > target ? "ArrowUp" : "ArrowDown")
+                _ = try await call("waitTitleStep", ["previous": previous])
+            }
+            try await sendTitleKey("Space")
+            return try await call("verifyTitleMove", input)
+        } catch { try? await sendTitleKey("Escape", allowCancelled: true); throw error }
     }
     func waitForState(_ flag: String, timeout: TimeInterval = 30) async throws -> [String: Any] {
         let deadline = Date().addingTimeInterval(timeout)
@@ -302,7 +384,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         _ = try await call("resume")
     }
     func returnToOverview() async throws {
-        if let state = try? await call("state"), state["overview"] as? Bool == true { return }
+        if try await call("state")["dialog"] as? Bool == true { throw AppFailure("A Slate dialog is still open. Finish or cancel it before retrying.") }
+        let state = try await waitForState("navigationReady", timeout: 60)
+        if state["overview"] as? Bool == true { return }
         _ = try await call("overview")
         _ = try await waitForState("overview")
     }
@@ -320,6 +404,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         currentTask = Task {
             do {
                 _ = try await call("resume")
+                try await returnToOverview()
                 let initial = try await waitForState("overview", timeout: 10)
                 let initialOrder = initial["order"] as? [String] ?? []
                 try verifyTargetNames(sheet.rails, existing: initialOrder)
@@ -379,12 +464,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
                 targets.append(resolved)
                 if normalized(resolved) != normalized(title) { log("\(rail.name): \(title) → \(resolved)") }
             } else {
-                let result = try await call("search", ["title": title])
+                let result: [String: Any]
+                do { result = try await call("search", ["title": title]) }
+                catch { try checkCancelled(); try await unresolvedTitle(rail, title: title, detail: error.localizedDescription); return }
                 let matches = result["matches"] as? [[String: Any]] ?? []
                 guard matches.count == 1, let match = matches.first?["title"] as? String else {
-                    let message = "\(rail.name): no unique catalog match for \(title); carousel left unchanged."
-                    unresolved.append(message); log(message); statuses[rail.name] = "Unresolved"
-                    _ = try await call("clearSearch"); try await returnToOverview(); return
+                    try await unresolvedTitle(rail, title: title, detail: "no unique catalog match"); return
                 }
                 targets.append(match); additions.append(match)
             }
@@ -396,9 +481,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         guard Set(targets.map(normalized)).count == targets.count else { throw AppFailure("Two workbook titles resolve to the same catalog title on \(rail.name).") }
         statuses[rail.name] = "Updating"; table.reloadData()
         for title in additions {
-            let search = try await call("search", ["title": title])
-            guard (search["matches"] as? [[String: Any]])?.count == 1 else { throw AppFailure("Search changed for \(title). No carousel was saved.") }
-            _ = try await call("choose", ["title": title])
+            let search: [String: Any]
+            do { search = try await call("search", ["title": title]) }
+            catch { try checkCancelled(); try await unresolvedTitle(rail, title: title, detail: error.localizedDescription); return }
+            guard (search["matches"] as? [[String: Any]])?.count == 1 else { try await unresolvedTitle(rail, title: title, detail: "catalog result changed"); return }
+            do { _ = try await call("choose", ["title": title]) }
+            catch { try checkCancelled(); try await unresolvedTitle(rail, title: title, detail: error.localizedDescription); return }
             log("\(rail.name): added \(title).")
         }
         _ = try await call("clearSearch")
@@ -408,13 +496,21 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         _ = try await call("publishCarousel")
         _ = try await waitForState("dialog")
         _ = try await call("schedule", ["position": rail.position])
-        _ = try await waitForState("overview", timeout: 60)
+        _ = try await waitForState("navigationReady", timeout: 60)
+        try await pause(800)
+        try await returnToOverview()
         try await openEditor(rail)
         let saved = try await call("pins")["pins"] as? [String] ?? []
         guard Array(saved.prefix(targets.count)) == targets, preservesExtras(before: before, after: saved, targets: targets) else { throw AppFailure("Saved titles did not verify on \(rail.name). Check the carousel in Slate.") }
         completedRails += 1; statuses[rail.name] = "Saved"
         log("\(rail.name): saved and verified (Column A position \(rail.position)).")
         try await returnToOverview()
+    }
+    func unresolvedTitle(_ rail: Rail, title: String, detail: String) async throws {
+        let message = "\(rail.name): unresolved title \(title) (\(detail)); carousel not saved. Continuing with remaining carousels."
+        unresolved.append(message); statuses[rail.name] = "Unresolved"; log(message)
+        _ = try? await call("clearSearch")
+        try checkCancelled(); try await returnToOverview()
     }
     func preservesExtras(before: [String], after: [String], targets: [String]) -> Bool {
         var counts: [String: Int] = [:]
@@ -486,7 +582,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         let host = webView.url?.host ?? ""
-        sessionLabel.stringValue = host == "slate.amazon.com" ? "Amazon Slate • Private session" : host.contains("amazon.") ? "Amazon sign-in • Complete login here" : (selfTest ? "Synthetic Slate test" : host)
+        sessionLabel.stringValue = host == "slate.amazon.com" ? (rememberSignIn ? "Amazon Slate • Remembered session" : "Amazon Slate • Private session") : host.contains("amazon.") ? "Amazon sign-in • Complete login here" : (selfTest ? "Synthetic Slate test" : host)
     }
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }

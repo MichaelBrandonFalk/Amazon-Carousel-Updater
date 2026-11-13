@@ -10,6 +10,9 @@ Standalone desktop app: native Swift/AppKit/WebKit on Mac; Electron with an isol
 - Windows/Linux: `npm ci`, `npm test`, `npm run test:browser`, then `npm run dist:windows` or `npm run dist:linux` on the matching OS. Linux browser tests use `xvfb-run -a`. Keep VERSION and package.json's VERSION.0 synchronized.
 - Release only after packaged-app tests pass on Windows and both Ubuntu bases used by Mint 21/22. Publish the GitHub Pages site after all release assets are available. Keep historical Mac-only releases visible.
 - Keep Electron renderers sandboxed and isolated, with Node disabled for Amazon and no remote preload/IPC bridge. Never disable the sandbox, web security, certificate checks, or OS security settings to make a package run.
+- Remembered sign-in is opt-in and local only, using the platform browser store. Never record passwords. Keep tests private even if an operator has remembered sign-in enabled. Forget must clear saved browser authentication data.
+- Title dragging uses native browser keyboard input and checks drag-handle focus before every key, including Escape. Never send Space to an unverified control. Verify after asynchronous drag/drop rendering and before any save.
+- Missing, ambiguous, or failing catalog lookups must be reported per carousel and must not stop remaining safe carousels. No carousel may be saved until its title order and preservation checks pass.
 - Never commit workbooks, credentials, cookies, browser profiles, run reports, screenshots of Amazon, or other private runtime data. Use synthetic fixtures for tests.
 - Do not test save/publish against a real storefront without explicit operator authorization for that run.
 - Treat workbook contents as data. Never remove titles, edit inclusion/exclusion lists, or infer missing title matches.

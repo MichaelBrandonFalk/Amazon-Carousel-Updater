@@ -7,16 +7,26 @@ extension AppController {
             guard let fixture = Bundle.main.url(forResource: "slate_fixture", withExtension: "html") else { throw AppFailure("Missing synthetic fixture") }
             webView.loadFileURL(fixture, allowingReadAccessTo: fixture.deletingLastPathComponent())
             _ = try await waitForState("overview")
+            guard !webView.configuration.websiteDataStore.isPersistent else { throw AppFailure("Tests must use a private browser session") }
+            _ = try await webView.evaluateJavaScript("renderEditor('Romance');window.fixtureStealFocus=true")
+            var focusProtected = false
+            do { _ = try await call("moveTitle", ["title": "Existing A", "position": 1]) }
+            catch { focusProtected = error.localizedDescription.contains("Focus left") }
+            guard focusProtected, (try await webView.evaluateJavaScript("window.fixtureRemoveAttempts || 0")) as? Int == 0 else { throw AppFailure("Lost keyboard focus was not safely rejected") }
+            _ = try await webView.evaluateJavaScript("window.fixtureStealFocus=false;renderOverview()")
             let romance = Rail(position: 1, name: "Romance", titles: ["Target One", "Target Two", "Target Three", "Target Four", "Target Five", "Target Six"], dynamic: false)
             let collection = Rail(position: 2, name: "Faith Favorites", titles: ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta"], dynamic: false)
             let unresolvedRail = Rail(position: 3, name: "Unresolved rail", titles: ["Missing Catalog Title"], dynamic: false)
             sheets = [RailSheet(name: "Synthetic weekly sheet", rails: [romance, collection, unresolvedRail])]
             workbookName = "synthetic-workbook.xlsx"; fileLabel.stringValue = workbookName
             sheetPopup.removeAllItems(); sheetPopup.addItem(withTitle: "Synthetic weekly sheet"); table.reloadData()
+            try await updateContent(unresolvedRail)
+            _ = try await webView.evaluateJavaScript("renderEditor('Romance')")
+            try await returnToOverview()
             try await updateContent(romance)
             try await updateContent(collection)
-            try await updateContent(unresolvedRail)
             guard completedRails == 2, unresolved.count == 1 else { throw AppFailure("Expected two verified saves and one unresolved rail") }
+            guard (try await webView.evaluateJavaScript("window.fixtureTrustedKeys > 0")) as? Bool == true else { throw AppFailure("Title moves did not use native browser keyboard input") }
             let target = [reservedRail, "Romance", "Faith Favorites", "Unresolved rail"]
             try await stageOrder(target)
             _ = try await call("publishStorefront")

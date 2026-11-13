@@ -4,6 +4,7 @@ let current, pending = false;
 function render(state) {
   document.title = `Amazon Carousel Updater V${state.version}`;
   current = state; $('version').textContent = `V${state.version} - Pure Flix / Amazon Slate`;
+  $('remember').checked = state.rememberSignIn;
   $('filename').textContent = state.workbookName || 'No workbook selected';
   const sheetNames = state.sheets.map(s => s.name);
   if (JSON.stringify(Array.from($('sheet').options, o => o.text)) !== JSON.stringify(sheetNames)) {
@@ -21,13 +22,13 @@ function render(state) {
     }
     return row;
   }));
-  for (const id of ['workbook', 'mode', 'open', 'back', 'reload', 'settings', 'export']) $(id).disabled = state.busy || pending;
+  for (const id of ['workbook', 'mode', 'open', 'back', 'reload', 'settings', 'export', 'remember', 'forget']) $(id).disabled = state.busy || pending;
   $('run').disabled = state.busy || !sheet || pending; $('stop').disabled = !state.busy;
   $('publish').disabled = state.busy || !state.staged || pending;
   $('progress').value = state.progress; $('status').textContent = state.status;
   const logs = state.logs.join('\n');
   if ($('logs').textContent !== logs) { $('logs').textContent = logs; $('logs').scrollTop = $('logs').scrollHeight; }
-  try { $('page').textContent = state.page.startsWith('file:') ? 'Synthetic Slate test' : new URL(state.page).hostname === 'slate.amazon.com' ? 'Amazon Slate - private session' : 'Amazon sign-in - complete login here'; } catch { $('page').textContent = 'Loading Slate'; }
+  try { $('page').textContent = state.page.startsWith('file:') ? 'Synthetic Slate test' : new URL(state.page).hostname === 'slate.amazon.com' ? (state.rememberSignIn ? 'Amazon Slate - remembered session' : 'Amazon Slate - private session') : 'Amazon sign-in - complete login here'; } catch { $('page').textContent = 'Loading Slate'; }
 }
 async function showError(message) { await window.updater.action('modal', true); $('error-message').textContent = message; if (!$('error-dialog').open) $('error-dialog').showModal(); }
 async function act(command, input) {
@@ -41,7 +42,8 @@ async function act(command, input) {
   finally { if (locks) { pending = false; if (current) render(current); } }
 }
 window.updater.onState(render);
-for (const id of ['workbook', 'open', 'back', 'reload', 'stop', 'publish', 'export']) $(id).addEventListener('click', () => act(id));
+for (const id of ['workbook', 'open', 'back', 'reload', 'stop', 'publish', 'export', 'forget']) $(id).addEventListener('click', () => act(id));
+$('remember').addEventListener('change', () => act('remember', $('remember').checked));
 $('sheet').addEventListener('change', () => act('sheet', Number($('sheet').value)));
 $('run').addEventListener('click', () => act('run', document.querySelector('input[name="mode"]:checked').value));
 $('settings').addEventListener('click', async () => { await window.updater.action('modal', true); $('storefront-url').value = current.storefront; $('storefront-dialog').showModal(); });

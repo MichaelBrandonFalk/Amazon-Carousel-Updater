@@ -49,7 +49,18 @@ class Engine {
     if (normalize(state.editorName) !== normalize(rail.name)) throw Error(`Opened ${state.editorName}, expected ${rail.name}.`);
     await this.call('resume');
   }
-  async overview() { if ((await this.call('state')).overview) return; await this.call('overview'); await this.wait('overview'); }
+  async overview() {
+    if ((await this.call('state')).dialog) throw Error('A Slate dialog is still open. Finish or cancel it before retrying.');
+    const state = await this.wait('navigationReady', 60000);
+    if (state.overview) return;
+    await this.call('overview'); await this.wait('overview');
+  }
+  async unresolvedTitle(rail, title, detail = '') {
+    const message = `${rail.name}: unresolved title ${title}${detail ? ' (' + detail + ')' : ''}; carousel not saved. Continuing with remaining carousels.`;
+    this.unresolved.push(message); this.statuses[rail.name] = 'Unresolved'; this.log(message);
+    try { await this.call('clearSearch'); } catch { this.check(); }
+    await this.overview();
+  }
   async updateContent(rail) {
     this.statuses[rail.name] = 'Checking'; this.emit(); await this.open(rail);
     const before = (await this.call('pins')).pins, targets = [], additions = [];
@@ -59,11 +70,11 @@ class Engine {
         targets.push(existing);
         if (normalize(existing) !== normalize(title)) this.log(`${rail.name}: ${title} -> ${existing}`);
       } else {
-        const result = await this.call('search', { title });
+        let result;
+        try { result = await this.call('search', { title }); }
+        catch (error) { this.check(); await this.unresolvedTitle(rail, title, error.message); return; }
         if (result.matches.length !== 1) {
-          const message = `${rail.name}: no unique catalog match for ${title}; carousel left unchanged.`;
-          this.unresolved.push(message); this.statuses[rail.name] = 'Unresolved'; this.log(message);
-          await this.call('clearSearch'); await this.overview(); return;
+          await this.unresolvedTitle(rail, title, 'no unique catalog match'); return;
         }
         targets.push(result.matches[0].title); additions.push(result.matches[0].title);
       }
@@ -75,15 +86,20 @@ class Engine {
     if (new Set(targets.map(normalize)).size !== targets.length) throw Error(`Two workbook titles resolve to the same catalog title on ${rail.name}.`);
     this.statuses[rail.name] = 'Updating'; this.emit();
     for (const title of additions) {
-      if ((await this.call('search', { title })).matches.length !== 1) throw Error(`Search changed for ${title}. No carousel was saved.`);
-      await this.call('choose', { title }); this.log(`${rail.name}: added ${title}.`);
+      let matches;
+      try { matches = (await this.call('search', { title })).matches; }
+      catch (error) { this.check(); await this.unresolvedTitle(rail, title, error.message); return; }
+      if (matches.length !== 1) { await this.unresolvedTitle(rail, title, 'catalog result changed'); return; }
+      try { await this.call('choose', { title }); }
+      catch (error) { this.check(); await this.unresolvedTitle(rail, title, error.message); return; }
+      this.log(`${rail.name}: added ${title}.`);
     }
     await this.call('clearSearch');
     for (const [position, title] of targets.entries()) await this.call('moveTitle', { title, position });
     const verify = pins => JSON.stringify(pins.slice(0, targets.length)) === JSON.stringify(targets) && preservesExtras(before, pins, targets);
     if (!verify((await this.call('pins')).pins)) throw Error(`Title order or preservation failed on ${rail.name}. No carousel was saved.`);
     await this.call('publishCarousel'); await this.wait('dialog'); await this.call('schedule', { position: rail.position });
-    await this.wait('overview', 60000); await this.open(rail);
+    await this.wait('navigationReady', 60000); await this.pause(800); await this.overview(); await this.open(rail);
     if (!verify((await this.call('pins')).pins)) throw Error(`Saved titles did not verify on ${rail.name}. Check Slate.`);
     this.completed++; this.statuses[rail.name] = 'Saved'; this.log(`${rail.name}: saved and verified (Column A position ${rail.position}).`);
     await this.overview();
@@ -106,6 +122,7 @@ class Engine {
     this.busy = true; this.cancelled = false; this.reset();
     try {
       await this.call('resume');
+      await this.overview();
       this.verifyNames(sheet.rails, (await this.wait('overview', 10000)).order);
       if (full) for (const [index, rail] of sheet.rails.entries()) {
         this.check(); this.status = `${index + 1}/${sheet.rails.length}: ${rail.name}`; this.emit();

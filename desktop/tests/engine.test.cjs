@@ -16,7 +16,7 @@ function fakeAdapter(rejectPublish = false) {
   let saved = [reservedRail, 'Extras', 'Romance'], order = saved.slice(); const calls = [];
   return { calls, publishDelay: 0, async reload() { order = saved.slice(); }, async call(command, input) {
     calls.push(command);
-    if (command === 'state') return { overview: true, order: order.slice(), publishEnabled: JSON.stringify(order) !== JSON.stringify(saved) };
+    if (command === 'state') return { overview: true, navigationReady: true, order: order.slice(), publishEnabled: JSON.stringify(order) !== JSON.stringify(saved) };
     if (command === 'order') return { order: order.slice() };
     if (command === 'moveRail') { const source = order.indexOf(input.name); [order[source], order[source - 1]] = [order[source - 1], order[source]]; return { order: order.slice() }; }
     if (command === 'publishStorefront' && !rejectPublish) saved = order.slice();
@@ -45,4 +45,36 @@ test('missing rails stop before content changes', async () => {
 test('stop is honored before the next operation', async () => {
   const engine = new Engine(fakeAdapter()); await engine.stop();
   await assert.rejects(engine.call('moveRail', { name: 'Romance', position: 1 }), /Stopped/);
+});
+test('catalog lookup exceptions are reported and later carousels still run', async () => {
+  const adapter = fakeAdapter(), originalCall = adapter.call;
+  adapter.call = async (command, input) => {
+    if (command === 'pins') return { pins: ['Existing title'] };
+    if (command === 'search') throw Error('Catalog temporarily unavailable');
+    return originalCall(command, input);
+  };
+  const engine = new Engine(adapter), update = engine.updateContent.bind(engine);
+  let laterProcessed = false;
+  engine.open = async () => {};
+  engine.updateContent = async rail => {
+    if (rail.name === 'Extras') { laterProcessed = true; return; }
+    return update(rail);
+  };
+  await engine.run({ name: 'Week', rails: [sheet.rails[0], { name: 'Extras', position: 2, titles: ['Another title'] }] }, true);
+  assert.equal(laterProcessed, true); assert.equal(engine.unresolved.length, 1);
+  assert.match(engine.logs.join('\n'), /Title.*Catalog temporarily unavailable/);
+  assert.equal(adapter.calls.includes('publishCarousel'), false);
+});
+test('retry from an editor returns to Overview instead of waiting on the wrong page', async () => {
+  const adapter = fakeAdapter(), originalCall = adapter.call;
+  let inEditor = true;
+  adapter.call = async (command, input) => {
+    if (command === 'overview') { inEditor = false; return {}; }
+    const result = await originalCall(command, input);
+    if (command === 'state' && inEditor) return { ...result, overview: false, editor: true, navigationReady: true };
+    return result;
+  };
+  const engine = new Engine(adapter);
+  await engine.run(sheet, false);
+  assert.equal(inEditor, false); assert.ok(engine.staged);
 });

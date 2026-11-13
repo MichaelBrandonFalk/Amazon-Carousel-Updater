@@ -1,4 +1,17 @@
-# V1.3
+# V1.4
+
+- Replace JavaScript-created drag keys with native browser input on Mac, Windows, and Linux. Target the actual drag handle, wait for each move, and verify the dropped title order before saving.
+- Check focus before every drag key; refuse input if it could hit another control such as Remove.
+- Recognize enabled carousel Publish controls implemented as buttons, links, or input controls, including accessible labels.
+- Return explicitly to Overview from the saved editor record, and recover safely when a retry begins inside an editor. Do not resubmit a save to work around a navigation timeout.
+- Continue past missing/ambiguous titles and catalog lookup/selection failures. Report the affected title/carousel without saving it; continue with remaining safe carousels.
+- Add opt-in Remember sign-in and Forget sign-in. Amazon sessions stay in local browser storage only; passwords are never recorded. Enabling it restarts the browser, so sign in once after enabling. Amazon can still request MFA or reauthentication.
+- Update Electron within the existing major version and patch the workbook XML dependency.
+- Expand regression tests to reject untrusted keys, use nested handles and delayed drag/drop, divert focus toward Remove, exercise Publish markup variants and saved-editor landings, and continue updates after an unresolved rail.
+
+Validation: synthetic workbook and embedded-browser tests on all supported build targets. These changes address the supplied error reports; production Slate still requires an operator-supervised retry. No real account credentials or private weekly sheets are part of this release.
+
+## V1.3
 
 V1.3 is the first published Windows/Linux release. V1.2 was a validation-only tag: its Windows release version check rejected CRLF line endings, so no release or site deployment was published. This release uses a shared, tested newline-independent validator and LF source checkout rules.
 

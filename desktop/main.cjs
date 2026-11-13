@@ -11,6 +11,7 @@ const selfTest = process.argv.includes('--self-test');
 const fixtureURL = pathToFileURL(path.join(root, 'Resources/slate_fixture.html')).href;
 const uiURL = 'carousel://ui/index.html';
 let win, guest, engine, driver, version, sheets = [], selected = 0, workbookName = '', storefront = defaultStorefront;
+let rememberSignIn = false;
 protocol.registerSchemesAsPrivileged([{ scheme: 'carousel', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
 function validStorefront(value) {
@@ -29,11 +30,36 @@ function assertSlate() {
   const target = new URL(storefront), prefix = target.pathname.replace(/storefront\/overview$/, '');
   if (url.origin !== 'https://slate.amazon.com' || !url.pathname.startsWith(prefix)) throw Error('Sign in, then open the selected Slate storefront before running.');
 }
-const commands = new Set(['state', 'order', 'pins', 'resume', 'cancel', 'open', 'overview', 'moveRail', 'search', 'choose', 'moveTitle', 'clearSearch', 'publishCarousel', 'schedule', 'publishStorefront']);
+const commands = new Set(['state', 'order', 'pins', 'resume', 'cancel', 'open', 'overview', 'moveRail', 'search', 'choose', 'clearSearch', 'publishCarousel', 'schedule', 'publishStorefront', 'prepareTitleMove', 'titleDragState', 'titleKeyTarget', 'waitTitleStep', 'verifyTitleMove']);
+async function sendTitleKey(key, cancelling = false) {
+  assertSlate();
+  if (!cancelling) engine.check();
+  if (!(await adapter.call('titleKeyTarget')).safe) throw Error('Focus left the title drag handle. No carousel was saved.');
+  const keys = { Space: 'Space', ArrowUp: 'Up', ArrowDown: 'Down', Escape: 'Escape' };
+  if (!keys[key]) throw Error('Unknown browser key.');
+  guest.webContents.sendInputEvent({ type: 'keyDown', keyCode: keys[key] });
+  guest.webContents.sendInputEvent({ type: 'keyUp', keyCode: keys[key] });
+}
+async function moveTitle(input) {
+  guest.webContents.focus();
+  const move = await adapter.call('prepareTitleMove', input);
+  if (move.source === move.position) return adapter.call('pins');
+  try {
+    await sendTitleKey('Space'); await engine.pause(350);
+    for (let i = 0; i < Math.abs(move.source - move.position); i++) {
+      const previous = await adapter.call('titleDragState');
+      await sendTitleKey(move.source > move.position ? 'ArrowUp' : 'ArrowDown');
+      await adapter.call('waitTitleStep', { previous });
+    }
+    await sendTitleKey('Space');
+    return await adapter.call('verifyTitleMove', input);
+  } catch (error) { try { await sendTitleKey('Escape', true); } catch {} throw error; }
+}
 const adapter = {
   publishDelay: selfTest ? 100 : 8000,
   async call(command, input = {}) {
     assertSlate();
+    if (command === 'moveTitle') return moveTitle(input);
     if (!commands.has(command)) throw Error('Unknown browser operation.');
     return guest.webContents.executeJavaScript(`(async () => { ${driver}\n return await window.ACU[${JSON.stringify(command)}](${JSON.stringify(input)}); })()`);
   },
@@ -49,7 +75,45 @@ const adapter = {
   }
 };
 function state() {
-  return { version, sheets, selected, workbookName, storefront, busy: engine.busy, staged: !!engine.staged, statuses: engine.statuses, logs: engine.logs, progress: engine.progress, status: engine.status, page: guest.webContents.getURL() };
+  return { version, sheets, selected, workbookName, storefront, rememberSignIn, busy: engine.busy, staged: !!engine.staged, statuses: engine.statuses, logs: engine.logs, progress: engine.progress, status: engine.status, page: guest.webContents.getURL() };
+}
+async function savePreferences() {
+  await fs.mkdir(app.getPath('userData'), { recursive: true });
+  await fs.writeFile(path.join(app.getPath('userData'), 'preferences.json'), JSON.stringify({ storefront, rememberSignIn }));
+}
+function makeGuest() {
+  const isolated = session.fromPartition(rememberSignIn && !selfTest ? 'persist:amazon-slate-sign-in' : `slate-${randomUUID()}`, { cache: false });
+  isolated.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  isolated.setPermissionCheckHandler(() => false);
+  isolated.on('will-download', event => event.preventDefault());
+  const view = new WebContentsView({ webPreferences: { session: isolated, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, allowRunningInsecureContent: false, navigateOnDragDrop: false } });
+  for (const eventName of ['will-navigate', 'will-redirect', 'will-frame-navigate']) view.webContents.on(eventName, event => { if (!allowedNavigation(event.url)) { event.preventDefault(); engine.log('Blocked navigation outside the Amazon browser session.'); } });
+  view.webContents.setWindowOpenHandler(({ url }) => { if (allowedNavigation(url)) void view.webContents.loadURL(url).catch(error => engine.log(error.message)); return { action: 'deny' }; });
+  view.webContents.on('did-navigate', changed);
+  return view;
+}
+function resizeGuest() { const [width, height] = win.getContentSize(); guest.setBounds({ x: 390, y: 54, width: width - 390, height: height - 54 }); }
+async function changeSignIn(remember) {
+  if (selfTest) throw Error('Saved sign-in is disabled during tests.');
+  const message = remember ? 'Remember Amazon sign-in on this computer?' : 'Forget Amazon sign-in on this computer?';
+  const detail = remember ? 'Amazon session data will stay locally in this app until you forget it. The app does not record your password or send session data to GitHub. Use only on a trusted computer. Sign in once in the remembered browser after it restarts. Amazon may still request sign-in or MFA later.' : 'Delete the saved Amazon session and start a private browser. This will not undo saved carousel changes.';
+  if (!await confirm(message, detail + '\n\nThe browser will restart and unsaved drafts will be discarded.', remember ? 'Remember Sign-In' : 'Forget Sign-In')) return;
+  engine.busy = true; engine.staged = null; changed();
+  try {
+    const old = guest; old.webContents.stop();
+    // Close the old view before clearing its store so it cannot recreate authentication data.
+    win.contentView.removeChildView(old); old.webContents.close();
+    if (!remember) {
+      const saved = session.fromPartition('persist:amazon-slate-sign-in');
+      await saved.clearStorageData(); await saved.clearCache(); await saved.clearAuthCache();
+    }
+    rememberSignIn = remember; await savePreferences();
+    engine.status = remember ? 'Sign in once - session will be remembered' : 'Saved sign-in cleared - private session';
+  } finally {
+    guest = makeGuest(); win.contentView.addChildView(guest); resizeGuest();
+    try { await guest.webContents.loadURL(storefront); }
+    finally { engine.busy = false; changed(); }
+  }
 }
 function changed() { if (win && !win.isDestroyed()) win.webContents.send('updater:state', state()); }
 async function confirm(message, detail, button) {
@@ -83,9 +147,13 @@ async function action(event, command, input) {
     case 'storefront':
       if (!validStorefront(input)) throw Error('Use an HTTPS slate.amazon.com storefront/overview URL without query parameters.');
       storefront = input; engine.staged = null;
-      await fs.mkdir(app.getPath('userData'), { recursive: true });
-      await fs.writeFile(path.join(app.getPath('userData'), 'preferences.json'), JSON.stringify({ storefront }));
+      await savePreferences();
       await guest.webContents.loadURL(storefront); break;
+    case 'remember':
+      if (typeof input !== 'boolean') throw Error('Choose a valid sign-in preference.');
+      if (rememberSignIn !== input) await changeSignIn(input);
+      break;
+    case 'forget': await changeSignIn(false); break;
     case 'run': {
       if (!sheets[selected]) throw Error('Choose a workbook first.');
       if (!['full', 'order'].includes(input)) throw Error('Select a valid update mode.');
@@ -116,6 +184,7 @@ async function start() {
   if (!selfTest) try {
     const saved = JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'preferences.json'), 'utf8'));
     if (validStorefront(saved.storefront)) storefront = saved.storefront;
+    rememberSignIn = saved.rememberSignIn === true;
   } catch { /* Missing or malformed preferences use the safe default storefront. */ }
   const assets = new Map([['/index.html', ['desktop/ui/index.html', 'text/html']], ['/app.css', ['desktop/ui/app.css', 'text/css']], ['/app.js', ['desktop/ui/app.js', 'text/javascript']], ['/logo.png', ['Resources/app-logo.png', 'image/png']]]);
   protocol.handle('carousel', async request => {
@@ -123,19 +192,11 @@ async function start() {
     if (url.hostname !== 'ui' || !asset) return new Response('Not found', { status: 404 });
     return new Response(await fs.readFile(path.join(root, asset[0])), { headers: { 'Content-Type': asset[1], 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" } });
   });
-  const isolated = session.fromPartition(`slate-${randomUUID()}`, { cache: false });
-  isolated.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-  isolated.setPermissionCheckHandler(() => false);
-  isolated.on('will-download', event => event.preventDefault());
   const area = screen.getPrimaryDisplay().workAreaSize;
   win = new BrowserWindow({ width: Math.min(1420, area.width), height: Math.min(940, area.height), minWidth: 960, minHeight: 640, title: `Amazon Carousel Updater V${version}`, icon: path.join(root, 'Resources/app-logo.png'), backgroundColor: '#f5f7f6', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
-  guest = new WebContentsView({ webPreferences: { session: isolated, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, allowRunningInsecureContent: false, navigateOnDragDrop: false } });
+  guest = makeGuest();
   win.contentView.addChildView(guest);
-  const resize = () => { const [width, height] = win.getContentSize(); guest.setBounds({ x: 390, y: 54, width: width - 390, height: height - 54 }); };
-  win.on('resize', resize); resize();
-  for (const eventName of ['will-navigate', 'will-redirect', 'will-frame-navigate']) guest.webContents.on(eventName, event => { if (!allowedNavigation(event.url)) { event.preventDefault(); engine.log('Blocked navigation outside the Amazon browser session.'); } });
-  guest.webContents.setWindowOpenHandler(({ url }) => { if (allowedNavigation(url)) void guest.webContents.loadURL(url).catch(error => engine.log(error.message)); return { action: 'deny' }; });
-  guest.webContents.on('did-navigate', changed);
+  win.on('resize', resizeGuest); resizeGuest();
   guest.webContents.on('did-fail-load', (_event, code, _description, _url, mainFrame) => { if (mainFrame && code !== -3) { engine.status = 'Page did not load - check your connection'; changed(); } });
   win.webContents.on('will-navigate', event => event.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -159,5 +220,5 @@ async function start() {
     if (!process.argv.includes('--keep-open')) app.exit(0);
   }
 }
-app.whenReady().then(start).catch(error => { console.error(error.message); if (!selfTest) dialog.showErrorBox('Amazon Carousel Updater', error.message); app.exit(1); });
+app.whenReady().then(start).catch(error => { console.error(selfTest ? error.stack : error.message); if (!selfTest) dialog.showErrorBox('Amazon Carousel Updater', error.message); app.exit(1); });
 app.on('window-all-closed', () => app.quit());

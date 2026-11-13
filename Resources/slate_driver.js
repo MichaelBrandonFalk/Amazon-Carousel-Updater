@@ -15,7 +15,9 @@
     }
     throw Error('Slate did not reach the expected page state.');
   };
-  const button = (scope, name) => Array.from(scope.querySelectorAll('button,a[role="button"]')).find(el => visible(el) && text(el) === name && !el.disabled);
+  const hasLabel = (el, name) => [text(el), el.getAttribute('aria-label'), el.value].some(value => String(value || '').replace(/\s+/g, ' ').trim() === name);
+  const button = (scope, name) => Array.from(scope.querySelectorAll('button,a,[role="button"],input[type="button"],input[type="submit"]')).find(el => visible(el) && hasLabel(el, name) && !el.disabled && el.getAttribute('aria-disabled') !== 'true');
+  const overviewControl = () => Array.from(document.querySelectorAll('a,button,[role="button"]')).find(el => visible(el) && hasLabel(el, 'Overview'));
   const click = el => {
     if (!el || el.disabled) throw Error('The expected Slate control is unavailable.');
     el.scrollIntoView({ block: 'center', inline: 'nearest' });
@@ -28,7 +30,11 @@
     return matches[0];
   };
   const rows = () => Array.from(section().querySelectorAll('.title-pinning-draggable'));
-  const rowTitle = el => text(el).replace(/^\d+\s*/, '').split('Remove')[0].trim();
+  const rowTitle = el => {
+    const copy = el.cloneNode(true);
+    copy.querySelectorAll('button,a,[role="button"]').forEach(child => { if (hasLabel(child, 'Remove') || /^remove\b/i.test(child.getAttribute('aria-label') || '')) child.remove(); });
+    return text(copy).replace(/^\d+\s*/, '').trim();
+  };
   const pins = () => rows().map(rowTitle);
   const railRows = () => Array.from(document.querySelectorAll('.storefront-carousel'));
   const order = () => railRows().map(el => {
@@ -54,6 +60,8 @@
     overview: railRows().length > 0,
     editor: sections().length === 1,
     editorName: editorName(),
+    navigationReady: !Array.from(document.querySelectorAll('[role="dialog"],.modal')).some(visible) && (railRows().length > 0 || !!overviewControl()),
+    hasOverviewLink: !!overviewControl(),
     dialog: !!Array.from(document.querySelectorAll('[role="dialog"],.modal')).find(visible),
     order: railRows().length ? order() : [],
     publishEnabled: !!button(document, 'Publish changes')
@@ -87,37 +95,44 @@
     await wait(() => pins().length === before + 1);
     return { pins: pins() };
   };
-  const key = (el, value, code, keyCode) => {
-    const options = { key: value, code, keyCode, which: keyCode, bubbles: true, cancelable: true };
-    el.dispatchEvent(new KeyboardEvent('keydown', options));
-    el.dispatchEvent(new KeyboardEvent('keyup', options));
-  };
-  const moveTitle = async ({ title, position }) => {
-    let current = rows(), source = current.findIndex(el => rowTitle(el) === title);
-    if (source < 0) throw Error('Pinned title is missing: ' + title);
-    if (source === position) return { pins: pins() };
+  const prepareTitleMove = ({ title, position }) => {
+    const current = rows(), source = current.findIndex(el => rowTitle(el) === title);
+    if (source < 0 || !Number.isInteger(position) || position < 0 || position >= current.length) throw Error('Pinned title or target position is unavailable.');
     const row = current[source];
-    row.scrollIntoView({ block: 'center' });
-    row.focus();
-    key(row, ' ', 'Space', 32);
-    try {
-      await sleep(150);
-      for (let i = 0; i < Math.abs(source - position); i++) {
-        check();
-        const up = source > position;
-        key(row, up ? 'ArrowUp' : 'ArrowDown', up ? 'ArrowUp' : 'ArrowDown', up ? 38 : 40);
-        await sleep(90);
-      }
-      key(row, ' ', 'Space', 32);
-      await sleep(250);
-    } catch (error) {
-      key(row, 'Escape', 'Escape', 27);
-      throw error;
-    }
-    if (pins()[position] !== title) {
-      key(row, 'Escape', 'Escape', 27);
-      throw Error('Keyboard reorder did not verify for ' + title + '. No carousel was saved.');
-    }
+    const handle = row.querySelector('[data-rbd-drag-handle-draggable-id],[data-rfd-drag-handle-draggable-id],[role="button"][tabindex]') || row;
+    row.scrollIntoView({ block: 'center' }); handle.focus({ preventScroll: true });
+    if (source !== position && document.activeElement !== handle) throw Error('Cannot focus the title drag handle. No carousel was saved.');
+    window.ACUTitleMove = { title, position, handle, handleId: handle.getAttribute('data-rbd-drag-handle-draggable-id') || handle.getAttribute('data-rfd-drag-handle-draggable-id') };
+    return { source, position };
+  };
+  const titleKeyTarget = () => {
+    const move = window.ACUTitleMove, active = document.activeElement;
+    if (!move || !active) return { safe: false };
+    const id = active.getAttribute('data-rbd-drag-handle-draggable-id') || active.getAttribute('data-rfd-drag-handle-draggable-id');
+    // React may replace the handle while lifting; accept only the same draggable ID, never a child Remove control.
+    if (move.handleId && id === move.handleId) move.handle = active;
+    return { safe: move.handle.isConnected && active === move.handle };
+  };
+  const titleDragState = () => {
+    titleKeyTarget();
+    const move = window.ACUTitleMove;
+    if (!move) throw Error('No title move is active.');
+    return { index: pins().indexOf(move.title), top: move.handle.getBoundingClientRect().top,
+      announcement: Array.from(document.querySelectorAll('[id^="rbd-announcement-"],[id^="rfd-announcement-"]')).map(text).join(' ') };
+  };
+  const waitTitleStep = async ({ previous }) => {
+    await wait(() => {
+      const now = titleDragState();
+      return now.index !== previous.index || now.announcement !== previous.announcement || Math.abs(now.top - previous.top) > 1;
+    }, 3000);
+    // React drag sensors reject movement while the previous step is animating.
+    await sleep(300); check();
+    return titleDragState();
+  };
+  const verifyTitleMove = async ({ title, position }) => {
+    try { await wait(() => pins()[position] === title, 3000); }
+    catch { throw Error('Keyboard reorder did not verify for ' + title + '. No carousel was saved.'); }
+    window.ACUTitleMove = null;
     return { pins: pins() };
   };
   const dialog = () => Array.from(document.querySelectorAll('[role="dialog"],.modal')).find(el => visible(el) && text(el).includes('Schedule carousel'));
@@ -145,7 +160,7 @@
       return { opened: true };
     },
     overview: () => {
-      const el = button(document.querySelector('nav[aria-label="breadcrumb"]') || document, 'Overview');
+      const el = overviewControl();
       click(el);
       return {};
     },
@@ -158,9 +173,14 @@
       await wait(() => norm(order()[source - 1]) === norm(name));
       return { order: order() };
     },
-    search, choose, moveTitle,
+    search, choose, prepareTitleMove, titleDragState, titleKeyTarget, waitTitleStep, verifyTitleMove,
     clearSearch: () => { setValue(section().querySelector('input.title-search-input'), ''); return {}; },
-    publishCarousel: () => { click(button(document, 'Publish')); return {}; },
+    publishCarousel: async () => {
+      section();
+      if (railRows().length) throw Error('Not in a carousel editor. No carousel was saved.');
+      const control = await wait(() => button(document, 'Publish') || button(document, 'Publish changes') || button(document, 'Publish carousel'), 10000);
+      click(control); return {};
+    },
     schedule,
     publishStorefront: () => { click(button(document, 'Publish changes')); return { submitted: true }; }
   };
