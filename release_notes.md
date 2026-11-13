@@ -1,4 +1,14 @@
-# V1.6
+# V1.7
+
+- Read pinned-title names from the rendered row rather than detached-clone textContent, which can include hidden decorations.
+- Exclude Slate's trailing Remove control and out-of-window availability warning, and normalize display whitespace. Warnings changing during a drag no longer masquerade as changes to the title inventory.
+- Add the expected/actual row counts and first differing slot/title to every failed per-move full-list check, including the error path that was still generic in V1.6.
+- Retain complete inventory, duplicate-count, remaining-title-order, and before-save/after-save verification. Genuine changed titles still fail closed.
+- Add Mac and Electron regression coverage where an unrelated row gains an availability warning and hidden decoration after a successful drop. The unchanged V1.6 reader fails this fixture; the corrected reader passes. Also test a genuinely changed title and its exact error detail.
+
+Validation: synthetic workbook and browser tests on supported package platforms. No live Slate save or publish. The production V1.6 drop was confirmed via Slate's accessibility announcement; its original expected array was not retained, so the exact live comparison mismatch cannot be recovered from that run.
+
+## V1.6
 
 - Wait for settled title lists before taking the original inventory and validating content.
 - Verify the complete expected list after every drop, including duplicate counts and the order of all other titles, rather than accepting only the moved title reaching its slot.

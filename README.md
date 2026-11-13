@@ -1,21 +1,21 @@
-# Amazon Carousel Updater V1.6
+# Amazon Carousel Updater V1.7
 
 Standalone desktop app for updating Amazon Slate from a weekly `.xlsx` workbook. Available for macOS, Windows, and Linux Mint. Every distribution includes its own Slate browser and runs without separately installing Codex, Python, Node.js, or an AI subscription/API key.
 
-[Download V1.6](https://github.com/MichaelBrandonFalk/Amazon-Carousel-Updater/releases/tag/v1.6) · [Public GitHub Pages download page](https://michaelbrandonfalk.github.io/Amazon-Carousel-Updater/) · [Separate Codex skill](https://github.com/MichaelBrandonFalk/Amazon-Rails-Update-Via-Spreadsheet)
+[Download V1.7](https://github.com/MichaelBrandonFalk/Amazon-Carousel-Updater/releases/tag/v1.7) · [Public GitHub Pages download page](https://michaelbrandonfalk.github.io/Amazon-Carousel-Updater/) · [Separate Codex skill](https://github.com/MichaelBrandonFalk/Amazon-Rails-Update-Via-Spreadsheet)
 
 ## Platform Downloads
 
 | Platform | File | Installation |
 | --- | --- | --- |
-| macOS 12+, Intel and Apple Silicon | `Amazon-Carousel-Updater-V1.6-macOS-universal.zip` | Unzip and move the app to Applications. |
-| Windows 10/11 x64 | `Amazon-Carousel-Updater-V1.6-Windows-x64-Setup.exe` | Run the installer; launch from the Start menu. No administrator install required. |
-| Linux Mint 21.x/22.x, Intel/AMD 64-bit | `Amazon-Carousel-Updater-V1.6-Linux-amd64.deb` | Open with Package Installer, then launch from the Mint menu. |
+| macOS 12+, Intel and Apple Silicon | `Amazon-Carousel-Updater-V1.7-macOS-universal.zip` | Unzip and move the app to Applications. |
+| Windows 10/11 x64 | `Amazon-Carousel-Updater-V1.7-Windows-x64-Setup.exe` | Run the installer; launch from the Start menu. No administrator install required. |
+| Linux Mint 21.x/22.x, Intel/AMD 64-bit | `Amazon-Carousel-Updater-V1.7-Linux-amd64.deb` | Open with Package Installer, then launch from the Mint menu. |
 
 Linux terminal installation from the download directory:
 
 ```bash
-sudo apt install ./Amazon-Carousel-Updater-V1.6-Linux-amd64.deb
+sudo apt install ./Amazon-Carousel-Updater-V1.7-Linux-amd64.deb
 amazon-carousel-updater
 ```
 
@@ -85,9 +85,9 @@ Package on the matching operating system. Runtime dependencies are locked and pr
 
 ## Release Every Edit
 
-The app has its own version line, separate from the skill's v2.x versions. V1.6 is current; the next shipped edit is V1.7, then V1.8, etc. V1.2 was an unpublished validation tag. V1.6 verifies the complete settled list after each drag and reports the exact title-validation mismatch. The public download site must use GitHub Pages, never ChatGPT Sites. The supplied artwork in `Resources/app-logo.png` is shared by all platforms, the site, and browser favicon; `bash scripts/build_icons.sh` regenerates Mac/site icon sizes. Electron packaging converts the same original artwork for Windows/Linux.
+The app has its own version line, separate from the skill's v2.x versions. V1.7 is current; the next shipped edit is V1.8, then V1.9, etc. V1.2 was an unpublished validation tag. V1.7 reads rendered title names without availability notices or hidden decorations, and reports the first differing row for a failed move. The public download site must use GitHub Pages, never ChatGPT Sites. The supplied artwork in `Resources/app-logo.png` is shared by all platforms, the site, and browser favicon; `bash scripts/build_icons.sh` regenerates Mac/site icon sizes. Electron packaging converts the same original artwork for Windows/Linux.
 
-1. Run `python3 scripts/new_version.py 1.7` before the next release and update `release_notes.md` and the site's static download links.
+1. Run `python3 scripts/new_version.py 1.8` before the next release and update `release_notes.md` and the site's static download links.
 2. Build and test, commit the exact source, and push.
 3. Use the release workflow's manual dispatch to validate all platforms before tagging. Then tag that exact commit `v1.6` and push the tag.
 4. GitHub Actions builds/tests all three platforms, creates a release with all installers plus SHA256 checksums, and only then deploys the matching GitHub Pages download site. A failing platform blocks publication. Old releases are retained.

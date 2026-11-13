@@ -31,9 +31,13 @@
   };
   const rows = () => Array.from(section().querySelectorAll('.title-pinning-draggable'));
   const rowTitle = el => {
-    const copy = el.cloneNode(true);
-    copy.querySelectorAll('button,a,[role="button"]').forEach(child => { if (hasLabel(child, 'Remove') || /^remove\b/i.test(child.getAttribute('aria-label') || '')) child.remove(); });
-    return text(copy).replace(/^\d+\s*/, '').trim();
+    // Read the rendered row: detached clones expose hidden textContent and status
+    // decorations. Neither availability warnings nor controls identify a title.
+    const rendered = el.innerText;
+    if (typeof rendered !== 'string' || !rendered.trim()) throw Error('Cannot read the rendered pinned title. No carousel was saved.');
+    return rendered.replace(/\s+/g, ' ').trim()
+      .replace(/\s*Note:\s*This title is currently out of window for this territory\.\s*$/i, '')
+      .replace(/\s*Remove\s*$/, '').replace(/^\d+\s+/, '').trim();
   };
   const pins = () => rows().map(rowTitle);
   if (!window.ACUInputGuard) {
@@ -45,6 +49,11 @@
     window.ACUInputGuard = true;
   }
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const listDifference = (expected, current) => {
+    const index = expected.findIndex((title, i) => current[i] !== title);
+    const slot = index >= 0 ? index : Math.min(expected.length, current.length);
+    return `Expected ${expected.length} rows, found ${current.length}; first difference at slot ${slot + 1}: expected "${expected[slot] ?? '(end of list)'}", found "${current[slot] ?? '(end of list)'}"`;
+  };
   const settledPins = async () => {
     let previous = pins(), since = Date.now();
     await wait(() => {
@@ -176,9 +185,12 @@
   const verifyTitleMove = async ({ title, position }) => {
     const expected = window.ACUTitleMove.expected;
     try { await wait(() => same(pins(), expected), 8000); }
-    catch { throw Error('Complete list did not verify after moving ' + title + ' to slot ' + (position + 1) + '. No carousel was saved.'); }
+    catch {
+      check();
+      throw Error('Complete list did not verify after moving ' + title + ' to slot ' + (position + 1) + '. ' + listDifference(expected, pins()) + '. No carousel was saved.');
+    }
     const current = await settledPins();
-    if (!same(current, expected)) throw Error('Title list changed after the drop settled. No carousel was saved.');
+    if (!same(current, expected)) throw Error('Title list changed after the drop settled. ' + listDifference(expected, current) + '. No carousel was saved.');
     window.ACUTitleMove = null;
     return { pins: current };
   };

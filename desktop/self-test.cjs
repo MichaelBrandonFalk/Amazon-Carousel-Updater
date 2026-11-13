@@ -18,7 +18,7 @@ async function runSelfTest({ engine, guest, win, setWorkbook }) {
     { position: 3, name: 'Faith Favorites', titles: ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta'], dynamic: false }
   ] };
   setWorkbook(sheet);
-  await guest.webContents.executeJavaScript('window.fixtureRowHandle=true;window.fixtureTransientDrop=true;renderEditor("Romance")');
+  await guest.webContents.executeJavaScript('window.fixtureRowHandle=true;window.fixtureTransientDrop=true;window.fixtureAvailabilityNote=true;renderEditor("Romance")');
   await engine.call('prepareTitleMove', { title: 'Existing A', position: 1 });
   assert.equal(await guest.webContents.executeJavaScript('document.dispatchEvent(new WheelEvent("wheel",{bubbles:true,cancelable:true,deltaY:100}))'), false, 'Wheel input must be blocked during a move');
   await engine.call('endTitleMove');
@@ -26,6 +26,7 @@ async function runSelfTest({ engine, guest, win, setWorkbook }) {
   await engine.call('moveTitle', { title: 'Existing A', position: 1 });
   assert.ok(await guest.webContents.executeJavaScript('window.fixtureTransientCount>0'), 'Must exercise delayed whole-list rendering');
   const baseline = (await engine.call('pins')).pins;
+  assert.ok(baseline.includes('Existing B'), 'Availability warnings and hidden decorations must not become title names');
   assert.equal((await engine.call('titleCheck', { before: baseline, targets: baseline.slice(0, 2) })).ok, true);
   const broken = await engine.call('titleCheck', { before: baseline.concat('Missing synthetic title'), targets: ['Wrong synthetic title'] });
   assert.equal(broken.ok, false); assert.match(broken.detail, /slot 1/); assert.match(broken.detail, /missing titles\/copies: Missing synthetic title/);
@@ -33,6 +34,9 @@ async function runSelfTest({ engine, guest, win, setWorkbook }) {
   const reordered = await engine.call('titleCheck', { before: extraOrder, targets: baseline.slice(0, 2) });
   assert.equal(reordered.ok, false); assert.match(reordered.detail, /remaining title/);
   await guest.webContents.executeJavaScript('window.fixtureTransientDrop=false');
+  await guest.webContents.executeJavaScript('window.fixtureCorruptDrop=true');
+  await assert.rejects(engine.call('moveTitle', { title: 'Existing A', position: 0 }), /first difference at slot .*Unexpected synthetic title/);
+  await guest.webContents.executeJavaScript('window.fixtureCorruptDrop=false;renderEditor("Romance")');
   assert.equal(await guest.webContents.executeJavaScript('window.fixtureRemoveAttempts||0'), 0, 'A nested Remove button must never be chosen as the drag handle');
   await guest.webContents.executeJavaScript('window.fixtureRowHandle=false');
   await guest.webContents.executeJavaScript('renderEditor("Romance");window.fixtureStealFocus=true');

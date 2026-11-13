@@ -27,6 +27,11 @@ function renderEditor(name){lifted=null;current=name;titles=data.pins[name].slic
    const handle=node('span',window.fixtureRowHandle?{}:{role:'button',tabindex:'0','data-rbd-drag-handle-draggable-id':title,'aria-label':'Reorder '+title});
    handle.style.cssText='display:inline-block;width:12px;height:20px;background:#b9c7c1';
    row.append(handle,node('span',{},String(i+1)),node('span',{},title),btn('Remove',()=>{window.fixtureRemoveAttempts=(window.fixtureRemoveAttempts||0)+1;throw Error('Removal is forbidden in this test')}));
+   if(window.fixtureAvailabilityNote&&window.fixtureDropCount&&title==='Existing B'){
+    row.append(node('span',{},'Note: This title is currently out of window for this territory.'));
+    const hidden=node('span',{},'Hidden accessibility decoration');hidden.style.display='none';row.append(hidden);
+   }
+   if(window.fixtureCorruptDrop&&window.fixtureDropCount&&title==='Existing C') row.children[2].textContent='Unexpected synthetic title';
    const eventTarget=window.fixtureRowHandle?row:handle;
    if(window.fixtureRowHandle){row.setAttribute('role','button');row.setAttribute('tabindex','0');row.setAttribute('data-rbd-drag-handle-draggable-id',title);row.querySelector('button').setAttribute('role','button');row.querySelector('button').setAttribute('tabindex','0')}
    eventTarget.addEventListener('keydown',event=>{
@@ -42,7 +47,7 @@ function renderEditor(name){lifted=null;current=name;titles=data.pins[name].slic
      if(!lifted){lifted={title,index:i,source:i,animating:false};announce('You have lifted the item in position '+(i+1));return}
      if(lifted.animating)return;
      const move=lifted;lifted=null;
-     setTimeout(()=>{titles.splice(move.source,1);titles.splice(move.index,0,move.title);renderRows();announce('You have dropped the item in position '+(move.index+1));
+     setTimeout(()=>{titles.splice(move.source,1);titles.splice(move.index,0,move.title);window.fixtureDropCount=(window.fixtureDropCount||0)+1;renderRows();announce('You have dropped the item in position '+(move.index+1));
       if(window.fixtureTransientDrop){setTimeout(()=>{const tail=Array.from(list.children).slice(3);tail.reverse().forEach(row=>list.append(row));window.fixtureTransientCount=(window.fixtureTransientCount||0)+1},30);setTimeout(renderRows,450)}
      },100);
     }else if(lifted&&lifted.title===title&&!lifted.animating){
