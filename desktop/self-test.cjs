@@ -18,6 +18,10 @@ async function runSelfTest({ engine, guest, win, setWorkbook }) {
     { position: 3, name: 'Faith Favorites', titles: ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta'], dynamic: false }
   ] };
   setWorkbook(sheet);
+  await guest.webContents.executeJavaScript('window.fixtureRowHandle=true;renderEditor("Romance")');
+  await engine.call('moveTitle', { title: 'Existing A', position: 1 });
+  assert.equal(await guest.webContents.executeJavaScript('window.fixtureRemoveAttempts||0'), 0, 'A nested Remove button must never be chosen as the drag handle');
+  await guest.webContents.executeJavaScript('window.fixtureRowHandle=false');
   await guest.webContents.executeJavaScript('renderEditor("Romance");window.fixtureStealFocus=true');
   await assert.rejects(engine.call('moveTitle', { title: 'Existing A', position: 1 }), /Focus left/);
   assert.equal(await guest.webContents.executeJavaScript('window.fixtureRemoveAttempts||0'), 0, 'Lost focus must never activate Remove');

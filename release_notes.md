@@ -1,4 +1,12 @@
-# V1.4
+# V1.5
+
+- Prefer drag-handle attributes on the row itself before checking nested handles. Never fall back to an arbitrary nested button, which might be Remove.
+- Add native Mac and Electron regression coverage for a draggable row containing a focusable Remove control, in addition to lost-focus protection.
+- Includes V1.4's reliable browser input, Publish/Overview navigation fixes, non-blocking unresolved-title reporting, and opt-in local remembered sign-in.
+
+Validation: synthetic browser tests exercise both row and nested-handle layouts without any Remove activation. No live Slate saves are performed by the tests; the operator should retry using V1.5 rather than V1.4.
+
+## V1.4
 
 - Replace JavaScript-created drag keys with native browser input on Mac, Windows, and Linux. Target the actual drag handle, wait for each move, and verify the dropped title order before saving.
 - Check focus before every drag key; refuse input if it could hit another control such as Remove.

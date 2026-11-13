@@ -24,10 +24,13 @@ function renderEditor(name){lifted=null;current=name;titles=data.pins[name].slic
   list.replaceChildren();
   titles.forEach((title,i)=>{
    const row=node('div',{class:'title-pinning-draggable'});
-   const handle=node('span',{role:'button',tabindex:'0','data-rbd-drag-handle-draggable-id':title,'aria-label':'Reorder '+title});
+   const handle=node('span',window.fixtureRowHandle?{}:{role:'button',tabindex:'0','data-rbd-drag-handle-draggable-id':title,'aria-label':'Reorder '+title});
    handle.style.cssText='display:inline-block;width:12px;height:20px;background:#b9c7c1';
    row.append(handle,node('span',{},String(i+1)),node('span',{},title),btn('Remove',()=>{window.fixtureRemoveAttempts=(window.fixtureRemoveAttempts||0)+1;throw Error('Removal is forbidden in this test')}));
-   handle.addEventListener('keydown',event=>{
+   const eventTarget=window.fixtureRowHandle?row:handle;
+   if(window.fixtureRowHandle){row.setAttribute('role','button');row.setAttribute('tabindex','0');row.setAttribute('data-rbd-drag-handle-draggable-id',title);row.querySelector('button').setAttribute('role','button');row.querySelector('button').setAttribute('tabindex','0')}
+   eventTarget.addEventListener('keydown',event=>{
+    if(event.target!==eventTarget)return;
     if(!event.isTrusted){window.fixtureRejectedKeys=(window.fixtureRejectedKeys||0)+1;return}
     window.fixtureTrustedKeys=(window.fixtureTrustedKeys||0)+1;
     if(!['Space','ArrowUp','ArrowDown','Escape'].includes(event.code))return;

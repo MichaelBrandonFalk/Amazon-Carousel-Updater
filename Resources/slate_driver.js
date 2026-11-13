@@ -99,7 +99,9 @@
     const current = rows(), source = current.findIndex(el => rowTitle(el) === title);
     if (source < 0 || !Number.isInteger(position) || position < 0 || position >= current.length) throw Error('Pinned title or target position is unavailable.');
     const row = current[source];
-    const handle = row.querySelector('[data-rbd-drag-handle-draggable-id],[data-rfd-drag-handle-draggable-id],[role="button"][tabindex]') || row;
+    const handleSelector = '[data-rbd-drag-handle-draggable-id],[data-rfd-drag-handle-draggable-id]';
+    const handle = row.matches(handleSelector) ? row : row.querySelector(handleSelector) || (row.matches('[role="button"][tabindex]') ? row : null);
+    if (!handle || hasLabel(handle, 'Remove')) throw Error('Cannot identify a safe title drag handle. No carousel was saved.');
     row.scrollIntoView({ block: 'center' }); handle.focus({ preventScroll: true });
     if (source !== position && document.activeElement !== handle) throw Error('Cannot focus the title drag handle. No carousel was saved.');
     window.ACUTitleMove = { title, position, handle, handleId: handle.getAttribute('data-rbd-drag-handle-draggable-id') || handle.getAttribute('data-rfd-drag-handle-draggable-id') };
@@ -107,7 +109,7 @@
   };
   const titleKeyTarget = () => {
     const move = window.ACUTitleMove, active = document.activeElement;
-    if (!move || !active) return { safe: false };
+    if (!move || !active || hasLabel(active, 'Remove') || hasLabel(active, 'Delete')) return { safe: false };
     const id = active.getAttribute('data-rbd-drag-handle-draggable-id') || active.getAttribute('data-rfd-drag-handle-draggable-id');
     // React may replace the handle while lifting; accept only the same draggable ID, never a child Remove control.
     if (move.handleId && id === move.handleId) move.handle = active;
