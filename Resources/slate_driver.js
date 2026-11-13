@@ -161,18 +161,26 @@
   const search = async ({ title }) => {
     const input = section().querySelector('input.title-search-input');
     if (!input) throw Error('Title search is unavailable.');
-    setValue(input, title);
-    // Debounced search can briefly show results from the previous query.
-    await sleep(1000);
-    const deadline = Date.now() + 7000;
-    let result = [];
-    while (Date.now() < deadline) {
-      check();
-      result = candidates().filter(el => norm(text(el)) === norm(title));
-      if (result.length) break;
-      await sleep(200);
-    }
-    return { matches: result.map(el => ({ title: text(el), detail: text(el.parentElement).slice(0, 500) })) };
+    const seasonKey = norm(title) + 'season1';
+    const allowSeason = !/season\s*\d+/i.test(title);
+    const read = () => {
+      const all = candidates();
+      return { exact: all.filter(el => norm(text(el)) === norm(title)), season: allowSeason ? all.filter(el => norm(text(el)) === seasonKey) : [] };
+    };
+    const query = async value => {
+      setValue(input, value);
+      // Ignore stale results during the catalog's search debounce.
+      await sleep(1000);
+      const deadline = Date.now() + 7000;
+      let result = read();
+      while (!result.exact.length && !result.season.length && Date.now() < deadline) { check(); await sleep(200); result = read(); }
+      return result;
+    };
+    let found = await query(title);
+    if (found.exact.length !== 1 && found.season.length !== 1 && allowSeason) found = await query(title + ' Season 1');
+    const exact = found.exact.length === 1;
+    const result = exact ? found.exact : (found.season.length === 1 ? found.season : []);
+    return { matchType: exact ? 'exact' : 'season1', reason: result.length ? '' : 'No unique exact title or Season 1 match', matches: result.map(el => ({ title: text(el), detail: text(el.parentElement).slice(0, 500) })) };
   };
   const choose = async ({ title }) => {
     const matches = candidates().filter(el => norm(text(el)) === norm(title));

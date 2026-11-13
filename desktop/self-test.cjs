@@ -18,6 +18,13 @@ async function runSelfTest({ engine, guest, win, setWorkbook }) {
     { position: 3, name: 'Faith Favorites', titles: ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta'], dynamic: false }
   ] };
   setWorkbook(sheet);
+  await guest.webContents.executeJavaScript('renderEditor("Romance")');
+  const fallback = await engine.call('search', { title: 'Seasoned Show' });
+  assert.equal(fallback.matchType, 'season1'); assert.equal(fallback.matches[0].title, 'Seasoned Show - Season 1');
+  await engine.call('choose', { title: fallback.matches[0].title });
+  assert.equal((await engine.call('search', { title: 'Exact Show' })).matchType, 'exact');
+  assert.equal((await engine.call('search', { title: 'Ambiguous Show' })).matches.length, 0);
+  assert.equal((await engine.call('search', { title: 'Seasoned Show Season 3' })).matches.length, 0);
   await guest.webContents.executeJavaScript('window.fixtureNumericOriginal=data.pins["Faith Favorites"];data.pins["Faith Favorites"]=["5,000 Synthetic Stars","2026","Alpha","Beta","Gamma","Delta"];renderEditor("Faith Favorites")');
   assert.deepEqual((await engine.call('pins')).pins.slice(0, 2), ['5,000 Synthetic Stars', '2026'], 'Row numbers must not consume numeric title prefixes');
   await engine.call('moveTitle', { title: '5,000 Synthetic Stars', position: 1 });
@@ -50,6 +57,7 @@ async function runSelfTest({ engine, guest, win, setWorkbook }) {
   await guest.webContents.executeJavaScript('renderEditor("Romance")');
   await engine.run(sheet, true);
   assert.equal(engine.completed, 3); assert.equal(engine.unresolved.length, 1);
+  assert.equal(engine.entries.filter(e => e.kind === 'not_added')[0].title, 'Missing Catalog Title');
   const counts = await guest.webContents.executeJavaScript('({saves:data.saved,published:data.published})');
   assert.deepEqual(counts.saves.map(item => item.position), [1, 2, 3]); assert.equal(counts.published, 0, 'Run must not publish storefront order');
   assert.ok(await guest.webContents.executeJavaScript('window.fixtureTrustedKeys>0'));

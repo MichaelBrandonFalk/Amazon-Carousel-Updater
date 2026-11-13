@@ -16,6 +16,16 @@ extension AppController {
             catch { saveBlocked = error.localizedDescription.contains("Saving is blocked") }
             testOnly = false
             guard saveBlocked else { throw AppFailure("Workbook test mode did not block saves") }
+            _ = try await webView.evaluateJavaScript("renderEditor('Romance')")
+            let seasonResult = try await call("search", ["title": "Seasoned Show"])
+            guard seasonResult["matchType"] as? String == "season1", (seasonResult["matches"] as? [[String: Any]])?.first?["title"] as? String == "Seasoned Show - Season 1" else { throw AppFailure("Unique Season 1 fallback did not resolve") }
+            _ = try await call("choose", ["title": "Seasoned Show - Season 1"])
+            let exactResult = try await call("search", ["title": "Exact Show"])
+            guard exactResult["matchType"] as? String == "exact" else { throw AppFailure("Exact title did not take precedence") }
+            let ambiguous = try await call("search", ["title": "Ambiguous Show"])
+            guard (ambiguous["matches"] as? [[String: Any]])?.isEmpty == true else { throw AppFailure("Ambiguous Season 1 was accepted") }
+            let explicit = try await call("search", ["title": "Seasoned Show Season 3"])
+            guard (explicit["matches"] as? [[String: Any]])?.isEmpty == true else { throw AppFailure("Explicit season was silently substituted") }
             _ = try await webView.evaluateJavaScript("window.fixtureNumericOriginal=data.pins['Faith Favorites'];data.pins['Faith Favorites']=['5,000 Synthetic Stars','2026','Alpha','Beta','Gamma','Delta'];renderEditor('Faith Favorites')")
             let numericPins = try await call("pins")["pins"] as? [String] ?? []
             guard Array(numericPins.prefix(2)) == ["5,000 Synthetic Stars", "2026"] else { throw AppFailure("Numeric title names lost their leading digits") }
@@ -74,6 +84,8 @@ extension AppController {
             let checkData = try await webView.evaluateJavaScript("JSON.stringify({saved:data.saved,inclusions:document.querySelectorAll('.title-inclusions').length,published:data.published})") as? String ?? ""
             guard checkData.contains("\"published\":1"), checkData.contains("\"position\":1"), checkData.contains("\"position\":2") else { throw AppFailure("Scheduling positions or publish count did not verify") }
             guard preservesExtras(before: ["A", "B", "B"], after: ["C", "A", "B", "B"], targets: ["C"]), !preservesExtras(before: ["A", "B", "B"], after: ["C", "A", "B"], targets: ["C"]) else { throw AppFailure("Duplicate-title preservation check failed") }
+            let html = try htmlReport()
+            guard html.contains("Titles not added"), html.contains("Missing Catalog Title"), html.contains("Season 1 selections") else { throw AppFailure("Readable HTML report did not include skipped-title detail") }
             table.reloadData()
             progress.doubleValue = 100; statusLabel.stringValue = "Self-test passed • saves, preservation, search, ordering"
             log("SELF-TEST PASS: query + collection editors, exact search/add, keyboard reorder, original-title preservation, unresolved-title skip, Column A positions, publish and reload.")

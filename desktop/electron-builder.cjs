@@ -6,7 +6,7 @@ module.exports = {
   productName: 'Amazon Carousel Updater',
   executableName: 'amazon-carousel-updater',
   directories: { output: 'dist/desktop' },
-  files: ['desktop/**', '!desktop/tests/**', 'Resources/slate_driver.js', 'Resources/slate_fixture.html', 'Resources/app-logo.png', 'VERSION', 'package.json'],
+  files: ['desktop/**', '!desktop/tests/**', 'Resources/slate_driver.js', 'Resources/slate_fixture.html', 'Resources/report_template.html', 'Resources/app-logo.png', 'VERSION', 'package.json'],
   asar: true,
   npmRebuild: false,
   win: {

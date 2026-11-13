@@ -80,12 +80,12 @@ test('retry from an editor returns to Overview instead of waiting on the wrong p
   assert.equal(inEditor, false); assert.ok(engine.staged);
 });
 
-function contentEngine({ chooseFailure = false, unsafeAddition = false } = {}) {
+function contentEngine({ chooseFailure = false, unsafeAddition = false, seasonFallback = false } = {}) {
   const original = ['Keep', 'Found B', 'Keep', 'Found A', 'Tail']; let pins = original.slice();
   const writes = [];
   const adapter = { async call(command, input) {
     if (command === 'pins') return { pins: pins.slice() };
-    if (command === 'search') return { matches: input.title === 'New Title' ? [{ title: 'New Title' }] : [] };
+    if (command === 'search') return { matchType: seasonFallback ? 'season1' : 'exact', matches: input.title === 'New Title' ? [{ title: seasonFallback ? 'New Title - Season 1' : 'New Title' }] : [] };
     if (command === 'choose') {
       if (unsafeAddition) { pins.push(input.title, 'Unexpected'); throw Error('Interrupted'); }
       if (chooseFailure) throw Error('No addition occurred');
@@ -122,6 +122,14 @@ test('uncertain partial mutation never saves the carousel', async () => {
 test('no matches leaves the whole carousel unchanged without reporting a save', async () => {
   const run = contentEngine(); await run.engine.updateContent({ name: 'Synthetic', titles: ['Missing'], position: 4 });
   assert.deepEqual(run.pins(), run.original); assert.equal(run.writes.length, 0); assert.equal(run.engine.statuses.Synthetic, 'No matched titles');
+});
+test('Season 1 fallback records the requested and selected title separately from skips', async () => {
+  const run = contentEngine({ seasonFallback: true });
+  await run.engine.updateContent({ name: 'Synthetic', titles: ['New Title', 'Missing', 'Found A'], position: 4 });
+  assert.deepEqual(run.pins().slice(0, 2), ['New Title - Season 1', 'Found A']);
+  assert.deepEqual(run.engine.entries.map(e => [e.kind, e.title]), [['season1', 'New Title'], ['not_added', 'Missing']]);
+  assert.equal(run.engine.entries[0].resolved, 'New Title - Season 1'); assert.equal(run.engine.entries[1].position, 4);
+  assert.equal(run.engine.statuses.Synthetic, 'Saved (partial)');
 });
 test('unknown publish outcome does not reload or submit another publish', async () => {
   const adapter = fakeAdapter(), original = adapter.call; let reloads = 0;

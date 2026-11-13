@@ -1,4 +1,14 @@
-# V1.8
+# V1.9
+
+- Replace the plain-text export with an offline readable HTML report. Put titles not added first, with their carousel, sheet position, reason, and carousel outcome. Separate other failures and Season 1 selections; keep the technical log collapsed.
+- Include a one-click Excel-compatible CSV download of the skipped-title table. Escape workbook content and neutralize spreadsheet formula prefixes.
+- Track skipped titles, Season 1 selections, and failures as structured report entries instead of reconstructing future reports from log sentences.
+- When no unique exact catalog match exists for a broad series name, accept exactly one matching Season 1 result. Prefer existing pinned matches and unique exact matches. Reject ambiguous Season 1 results, different series names, other seasons, and episodes. Report each fallback explicitly.
+- Preserve partial updates, all existing titles, local-only authentication/report data, and separate publication confirmation.
+
+Validation: unit tests, native Mac and Electron synthetic browser tests for fallback precedence/ambiguity and HTML export; private rendering and CSV checks using the previous operator report. The supplied workbook is also checked in the local no-save workflow before release. Packaged-platform CI gates public downloads.
+
+## V1.8
 
 - Read the actual ordinal element separately from rendered title text. CSS spacing can leave the ordinal and title concatenated; title digits must be preserved.
 - Wait for the requested editor name and settled rows rather than accepting an initial Untitled carousel shell or the previous editor during navigation.

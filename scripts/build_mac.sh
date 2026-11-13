@@ -17,6 +17,7 @@ done
 lipo -create .build/updater-arm64 .build/updater-x86_64 -output "$APP/Contents/MacOS/CarouselUpdater"
 cp Resources/slate_driver.js "$APP/Contents/Resources/"
 cp Resources/slate_fixture.html "$APP/Contents/Resources/"
+cp Resources/report_template.html "$APP/Contents/Resources/"
 cp Resources/app-logo.png "$APP/Contents/Resources/"
 if [[ -f Resources/AppIcon.icns ]]; then cp Resources/AppIcon.icns "$APP/Contents/Resources/"; fi
 /usr/libexec/PlistBuddy -c 'Clear dict' "$APP/Contents/Info.plist"

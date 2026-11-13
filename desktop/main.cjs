@@ -5,6 +5,7 @@ const { pathToFileURL } = require('node:url');
 const { randomUUID } = require('node:crypto');
 const { readWorkbook } = require('./workbook.cjs');
 const { Engine, skipContent } = require('./engine.cjs');
+const { renderReport } = require('./report.cjs');
 const root = path.join(__dirname, '..');
 const defaultStorefront = 'https://slate.amazon.com/merchandising/ui/amzn1.dv.channel.8356bff5-1b7d-403a-a116-5ae64b5cfe14.US/storefront/overview';
 const selfTest = process.argv.includes('--self-test');
@@ -170,8 +171,8 @@ async function action(event, command, input) {
       break;
     }
     case 'export': {
-      const result = await dialog.showSaveDialog(win, { defaultPath: 'carousel-run-report.txt', filters: [{ name: 'Text report', extensions: ['txt'] }] });
-      if (!result.canceled && result.filePath) await fs.writeFile(result.filePath, `Amazon Carousel Updater V${version}\nWorkbook: ${workbookName}\nSheet: ${sheets[selected]?.name || ''}\nSaved carousels: ${engine.completed}\nStatus: ${engine.status}\n\n${engine.logs.join('\n')}\n`);
+      const result = await dialog.showSaveDialog(win, { defaultPath: 'carousel-run-report.html', filters: [{ name: 'Readable report (open in a browser)', extensions: ['html'] }] });
+      if (!result.canceled && result.filePath) await fs.writeFile(result.filePath, renderReport({ version, workbook: workbookName, sheet: sheets[selected]?.name || '', rails: sheets[selected]?.rails || [], saved: engine.completed, status: engine.status, statuses: engine.statuses, entries: engine.entries, logs: engine.logs }));
       break;
     }
     default: throw Error('Unknown app operation.');

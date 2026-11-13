@@ -17,11 +17,11 @@ const sameOrder = (a, b) => a.length === b.length && a.every((name, i) => normal
 class Engine {
   constructor(adapter, changed = () => {}) {
     this.adapter = adapter; this.changed = changed; this.busy = false; this.cancelled = false;
-    this.logs = []; this.statuses = {}; this.completed = 0; this.unresolved = []; this.staged = null; this.progress = 0; this.status = 'Select your weekly workbook';
+    this.logs = []; this.entries = []; this.activeCarousel = ''; this.statuses = {}; this.completed = 0; this.unresolved = []; this.staged = null; this.progress = 0; this.status = 'Select your weekly workbook';
   }
   emit() { this.changed(); }
   log(message) { this.logs.push(message); this.emit(); }
-  reset() { this.statuses = {}; this.completed = 0; this.unresolved = []; this.staged = null; this.progress = 0; this.emit(); }
+  reset() { this.entries = []; this.activeCarousel = ''; this.statuses = {}; this.completed = 0; this.unresolved = []; this.staged = null; this.progress = 0; this.emit(); }
   check() { if (this.cancelled) throw Error('Stopped. Saves already submitted to Amazon remain applied.'); }
   async pause(ms) { this.check(); await new Promise(resolve => setTimeout(resolve, ms)); this.check(); }
   async call(command, input = {}) { this.check(); return this.adapter.call(command, input); }
@@ -58,6 +58,7 @@ class Engine {
   async unresolvedTitle(rail, title, detail = '') {
     const message = `${rail.name}: skipped title ${title}${detail ? ' (' + detail + ')' : ''}; continuing with other titles in this carousel.`;
     this.unresolved.push(message); this.log(message);
+    this.entries.push({ kind: 'not_added', position: rail.position, carousel: rail.name, title, reason: detail || 'No unique match' });
     try { await this.call('clearSearch'); } catch { this.check(); }
   }
   async updateContent(rail) {
@@ -75,7 +76,7 @@ class Engine {
         try { result = await this.call('search', { title }); }
         catch (error) { this.check(); await this.unresolvedTitle(rail, title, error.message); continue; }
         if (result.matches.length !== 1) {
-          await this.unresolvedTitle(rail, title, 'no unique catalog match'); continue;
+          await this.unresolvedTitle(rail, title, result.reason || 'no unique catalog match'); continue;
         }
         const match = result.matches[0].title;
         if (targets.includes(match)) { await this.unresolvedTitle(rail, title, 'duplicates an already matched title'); continue; }
@@ -90,6 +91,10 @@ class Engine {
         if (JSON.stringify(observed) !== JSON.stringify([...working, match])) throw Error(`${rail.name}: added title inventory did not verify; no carousel was saved.`);
         working = observed; targets.push(match); additions.push(match);
         this.log(`${rail.name}: added ${match}.`);
+        if (result.matchType === 'season1') {
+          this.entries.push({ kind: 'season1', position: rail.position, carousel: rail.name, title, resolved: match });
+          this.log(`${rail.name}: Season 1 fallback ${title} -> ${match}.`);
+        }
       }
     }
     const partial = this.unresolved.length > warningStart;
@@ -110,6 +115,7 @@ class Engine {
     if (!checked.ok) throw Error(`${rail.name}: ${checked.detail}. No carousel was saved.`);
     if (checked.pins.length < 5) {
       this.statuses[rail.name] = 'Too few titles'; this.log(`${rail.name}: fewer than five total titles; carousel not saved.`);
+      this.entries.push({ kind: 'issue', carousel: rail.name, reason: 'Fewer than five total titles; carousel not saved.' });
       await this.overview(); return;
     }
     await this.call('publishCarousel'); await this.wait('dialog'); await this.call('schedule', { position: rail.position });
@@ -141,7 +147,7 @@ class Engine {
       await this.overview();
       this.verifyNames(sheet.rails, (await this.wait('overview', 10000)).order);
       if (full) for (const [index, rail] of sheet.rails.entries()) {
-        this.check(); this.status = `${index + 1}/${sheet.rails.length}: ${rail.name}`; this.emit();
+        this.check(); this.activeCarousel = rail.name; this.status = `${index + 1}/${sheet.rails.length}: ${rail.name}`; this.emit();
         if (skipContent(rail)) { this.statuses[rail.name] = 'Order only'; this.log(`${rail.name}: content skipped.`); }
         else await this.updateContent(rail);
         this.progress = (index + 1) / sheet.rails.length * 85; this.emit();
@@ -151,7 +157,7 @@ class Engine {
       this.progress = 100; this.status = this.staged ? 'Order verified - ready to publish' : 'Complete - order already matches';
       if (this.unresolved.length) this.status += ` - ${this.unresolved.length} unresolved`;
       this.log(this.staged ? 'Click Publish Order to apply the verified draft.' : 'No storefront order changes needed.');
-    } catch (error) { this.staged = null; this.status = this.cancelled ? 'Stopped' : 'Needs attention'; this.log(error.message); throw error; }
+    } catch (error) { this.staged = null; this.status = this.cancelled ? 'Stopped' : 'Needs attention'; this.entries.push({ kind: 'issue', carousel: this.activeCarousel || 'Run', reason: error.message }); this.log(error.message); throw error; }
     finally { this.busy = false; this.emit(); }
   }
   async publish() {
@@ -172,7 +178,7 @@ class Engine {
       }
       if (!verified) throw Error(`${lastError.message}. No second publish was submitted.`);
       this.status = 'Published and verified'; this.log('Published storefront order verified after reload.');
-    } catch (error) { this.status = 'Needs attention'; this.log(error.message); throw error; }
+    } catch (error) { this.status = 'Needs attention'; this.entries.push({ kind: 'issue', carousel: 'Storefront order', reason: error.message }); this.log(error.message); throw error; }
     finally { this.staged = null; this.busy = false; this.emit(); }
   }
 }

@@ -1,21 +1,21 @@
-# Amazon Carousel Updater V1.8
+# Amazon Carousel Updater V1.9
 
 Standalone desktop app for updating Amazon Slate from a weekly `.xlsx` workbook. Available for macOS, Windows, and Linux Mint. Every distribution includes its own Slate browser and runs without separately installing Codex, Python, Node.js, or an AI subscription/API key.
 
-[Download V1.8](https://github.com/MichaelBrandonFalk/Amazon-Carousel-Updater/releases/tag/v1.8) · [Public GitHub Pages download page](https://michaelbrandonfalk.github.io/Amazon-Carousel-Updater/) · [Separate Codex skill](https://github.com/MichaelBrandonFalk/Amazon-Rails-Update-Via-Spreadsheet)
+[Download V1.9](https://github.com/MichaelBrandonFalk/Amazon-Carousel-Updater/releases/tag/v1.9) · [Public GitHub Pages download page](https://michaelbrandonfalk.github.io/Amazon-Carousel-Updater/) · [Separate Codex skill](https://github.com/MichaelBrandonFalk/Amazon-Rails-Update-Via-Spreadsheet)
 
 ## Platform Downloads
 
 | Platform | File | Installation |
 | --- | --- | --- |
-| macOS 12+, Intel and Apple Silicon | `Amazon-Carousel-Updater-V1.8-macOS-universal.zip` | Unzip and move the app to Applications. |
-| Windows 10/11 x64 | `Amazon-Carousel-Updater-V1.8-Windows-x64-Setup.exe` | Run the installer; launch from the Start menu. No administrator install required. |
-| Linux Mint 21.x/22.x, Intel/AMD 64-bit | `Amazon-Carousel-Updater-V1.8-Linux-amd64.deb` | Open with Package Installer, then launch from the Mint menu. |
+| macOS 12+, Intel and Apple Silicon | `Amazon-Carousel-Updater-V1.9-macOS-universal.zip` | Unzip and move the app to Applications. |
+| Windows 10/11 x64 | `Amazon-Carousel-Updater-V1.9-Windows-x64-Setup.exe` | Run the installer; launch from the Start menu. No administrator install required. |
+| Linux Mint 21.x/22.x, Intel/AMD 64-bit | `Amazon-Carousel-Updater-V1.9-Linux-amd64.deb` | Open with Package Installer, then launch from the Mint menu. |
 
 Linux terminal installation from the download directory:
 
 ```bash
-sudo apt install ./Amazon-Carousel-Updater-V1.8-Linux-amd64.deb
+sudo apt install ./Amazon-Carousel-Updater-V1.9-Linux-amd64.deb
 amazon-carousel-updater
 ```
 
@@ -27,7 +27,8 @@ The `.deb` targets standard Ubuntu-based Mint, not ARM or a universal Linux bina
 2. Open the app, choose the weekly workbook, and select the visible weekly worksheet.
 3. For a reusable sign-in, select **Remember sign-in** before logging in once inside the app. Leave it off for a private session. Use **Storefront…** to change the storefront URL if needed.
 4. Choose **Full Update** or **Order Only**, then **Run Update**.
-5. Review any unresolved titles and the result. Click **Publish Order…** to apply the final carousel order.
+5. Use **Export Report** for the readable HTML report. Its first table lists titles not added, the reason, and whether the rest of each carousel saved. Download that table as an Excel-compatible CSV if needed.
+6. Review any unresolved titles and the result. Click **Publish Order…** to apply the final carousel order.
 
 Full Update saves each carousel's content immediately through Amazon's Schedule dialog. The final storefront order has a separate confirmation. Stop prevents further actions but cannot undo saves already submitted to Amazon.
 
@@ -85,11 +86,11 @@ Package on the matching operating system. Runtime dependencies are locked and pr
 
 ## Release Every Edit
 
-The app has its own version line, separate from the skill's v2.x versions. V1.8 is current; the next shipped edit is V1.9. V1.2 was an unpublished validation tag. V1.8 reads ordinal and title text separately, waits for the requested editor identity, and reloads Overview before each run to discard previous unsaved state. The public download site must use GitHub Pages, never ChatGPT Sites. The supplied artwork in `Resources/app-logo.png` is shared by all platforms, the site, and browser favicon; `bash scripts/build_icons.sh` regenerates Mac/site icon sizes. Electron packaging converts the same original artwork for Windows/Linux.
+The app has its own version line, separate from the skill's v2.x versions. V1.9 is current; the next shipped edit is V1.10. V1.2 was an unpublished validation tag. V1.8 reads ordinal and title text separately, waits for the requested editor identity, and reloads Overview before each run to discard previous unsaved state. The public download site must use GitHub Pages, never ChatGPT Sites. The supplied artwork in `Resources/app-logo.png` is shared by all platforms, the site, and browser favicon; `bash scripts/build_icons.sh` regenerates Mac/site icon sizes. Electron packaging converts the same original artwork for Windows/Linux.
 
-1. Run `python3 scripts/new_version.py 1.9` before the next release and update `release_notes.md` and the site's static download links.
+1. Run `python3 scripts/new_version.py 1.10` before the next release and update `release_notes.md` and the site's static download links.
 2. Build and test, commit the exact source, and push.
-3. Use the release workflow's manual dispatch to validate all platforms before tagging. Then tag that exact commit `v1.8` and push the tag.
+3. Use the release workflow's manual dispatch to validate all platforms before tagging. Then tag that exact commit `v1.9` and push the tag.
 4. GitHub Actions builds/tests all three platforms, creates a release with all installers plus SHA256 checksums, and only then deploys the matching GitHub Pages download site. A failing platform blocks publication. Old releases are retained.
 
 The download page reads per-platform release history from the public GitHub releases API and retains direct release links if that API is unavailable. `website/dist` is deployed to GitHub Pages by the release workflow (or a manual Pages dispatch), not immediately on every source push. A skill change is not automatically ported into the app; port and test applicable changes before shipping a new app version.
@@ -103,3 +104,11 @@ On Mac, choose **File → Test Workbook Without Saving** after loading a workboo
 Each run starts from a fresh Overview page and fresh per-run logs. Remembered authentication remains local and is retained. Starting a run discards any previous unsaved Slate draft.
 
 Publishing waits for a new Slate reorder-success message before reloading. The complete order, including extra rails, is verified on up to three fresh read-only page loads. A missing acknowledgement or persisted mismatch is reported with no second publish submission.
+
+## Season 1 fallback
+
+Existing pinned matches and unique exact catalog matches take precedence. If a broad series name has no unique exact catalog match, use Season 1 only when exactly one catalog result matches that same series name plus Season 1. Distinct Season 1 assets remain ambiguous. Explicit requests for another season are preserved. The report lists each fallback separately from skipped titles and shows whether its carousel was saved.
+
+## Readable run reports
+
+Exports are standalone local HTML files: Titles not added first, separate Other issues and Season 1 selections tables, per-carousel outcomes, and a collapsed technical log. The skipped-title table can be downloaded as an Excel-compatible CSV. Workbook text is rendered as text and CSV formula prefixes are neutralized. Reports contain private run data and must never be committed to GitHub.

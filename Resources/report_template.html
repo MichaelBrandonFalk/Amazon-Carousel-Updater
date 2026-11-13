@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'">
+<title>Carousel update report</title><style>
+:root{color-scheme:light;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#20312b;background:#f3f6f4}body{max-width:1200px;margin:32px auto;padding:0 24px}h1{font-size:30px;margin:0 0 8px}h2{font-size:21px;margin:0 0 14px}p{margin:8px 0}.muted{color:#586b61}.cards{display:flex;gap:14px;flex-wrap:wrap;margin:24px 0}.card{background:white;border:1px solid #d5ded8;border-radius:8px;padding:14px 22px;min-width:150px}.card strong{display:block;font-size:30px}.warn{border-left:5px solid #cc8d10}.bad{border-left:5px solid #bd3f35}.good{border-left:5px solid #287552}section,details{background:white;padding:24px;border:1px solid #d5ded8;border-radius:8px;margin:20px 0}.scroll{overflow:auto}table{border-collapse:collapse;width:100%;text-align:left}th{font-size:12px;text-transform:uppercase;letter-spacing:.03em;background:#f0f4f1}th,td{padding:12px;border-bottom:1px solid #dde5df;vertical-align:top}td.title{font-weight:650;min-width:220px}.skipped tbody tr{background:#fff7e5}.issues tbody tr{background:#fff0ee}.badge{white-space:nowrap;font-size:12px;font-weight:650}button{background:#225d46;color:white;border:0;border-radius:5px;padding:10px 16px;cursor:pointer;margin:12px 0}summary{cursor:pointer;font-weight:650}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;background:#f5f7f5;padding:16px}@media print{body{background:white;margin:0;padding:0}button{display:none}section,details{break-inside:avoid}details:not([open]){display:none}}@media(max-width:650px){body{padding:0 12px}section{padding:16px}.card{min-width:110px}}
+</style></head><body>
+<h1>Carousel update report</h1><p id="context" class="muted"></p><p id="run-status"></p>
+<div class="cards"><div class="card warn"><strong id="skip-count">0</strong>Titles not added</div><div class="card bad"><strong id="issue-count">0</strong>Other issues</div><div class="card good"><strong id="save-count">0</strong>Carousels saved</div><div class="card"><strong id="season-count">0</strong>Season 1 selections</div></div>
+<section class="warn"><h2>Titles not added — review these first</h2><p>Other matched titles in these carousels can still be updated. Existing titles are preserved.</p><button id="csv">Download titles not added (Excel CSV)</button><div id="skips" class="scroll skipped"></div></section>
+<section id="issues-section" class="bad"><h2>Other issues</h2><div id="issues" class="scroll issues"></div></section>
+<section><h2>Season 1 selections</h2><p class="muted">Selected when there was no unique exact title match and one Season 1 result matched the requested series.</p><div id="seasons" class="scroll"></div></section>
+<details><summary>All carousel results</summary><div id="results" class="scroll"></div></details>
+<details><summary>Technical run log</summary><pre id="log"></pre></details>
+<script type="application/json" id="report-data">__REPORT_DATA__</script>
+<script>
+'use strict';
+const data=JSON.parse(document.getElementById('report-data').textContent),entries=data.entries||[],skips=entries.filter(e=>e.kind==='not_added'),issues=entries.filter(e=>e.kind==='issue'),seasons=entries.filter(e=>e.kind==='season1');
+const put=(id,value)=>{document.getElementById(id).textContent=value};
+put('context',[data.workbook,data.sheet,'V'+data.version].filter(Boolean).join(' · '));put('run-status',data.status||'');
+put('skip-count',skips.length);put('issue-count',issues.length);put('save-count',data.saved||0);put('season-count',seasons.length);put('log',(data.logs||[]).join('\n'));
+function table(id,headers,rows,empty){const host=document.getElementById(id);if(!rows.length){host.textContent=empty;return}const table=document.createElement('table'),head=document.createElement('thead'),tr=document.createElement('tr');headers.forEach(h=>{const cell=document.createElement('th');cell.textContent=h;tr.append(cell)});head.append(tr);table.append(head);const body=document.createElement('tbody');for(const values of rows){const row=document.createElement('tr');values.forEach((v,i)=>{const cell=document.createElement('td');cell.textContent=String(v??'');if(i===2)cell.className='title';row.append(cell)});body.append(row)}table.append(body);host.append(table)}
+const outcome=e=>(data.statuses||{})[e.carousel]||'Not completed';
+const skipRows=skips.map(e=>[e.position,e.carousel,e.title,e.reason,outcome(e)]);
+table('skips',['Sheet position','Carousel','Title not added','Why it was skipped','Carousel result'],skipRows,'No titles were skipped.');
+table('issues',['Carousel','Issue'],issues.map(e=>[e.carousel||'Run',e.reason]),'No other issues were reported.');
+table('seasons',['Sheet position','Carousel','Requested title','Selected catalog title','Carousel result'],seasons.map(e=>[e.position,e.carousel,e.title,e.resolved,outcome(e)]),'No Season 1 fallback was used.');
+table('results',['Sheet position','Carousel','Result'],(data.rails||[]).map(r=>[r.position,r.name,(data.statuses||{})[r.name]||'Not processed']),'No carousel results.');
+document.getElementById('csv').disabled=!skips.length;
+document.getElementById('csv').onclick=()=>{const safe=value=>{let s=String(value??'');if(/^[=+\-@\t\r\n]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"'};const lines=[['Sheet position','Carousel','Title not added','Reason','Carousel result'],...skipRows].map(row=>row.map(safe).join(',')).join('\r\n');const url=URL.createObjectURL(new Blob(['\ufeff'+lines],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='titles-not-added.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+</script></body></html>
