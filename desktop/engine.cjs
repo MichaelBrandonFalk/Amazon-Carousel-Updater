@@ -96,11 +96,13 @@ class Engine {
     }
     await this.call('clearSearch');
     for (const [position, title] of targets.entries()) await this.call('moveTitle', { title, position });
-    const verify = pins => JSON.stringify(pins.slice(0, targets.length)) === JSON.stringify(targets) && preservesExtras(before, pins, targets);
-    if (!verify((await this.call('pins')).pins)) throw Error(`Title order or preservation failed on ${rail.name}. No carousel was saved.`);
+    const validation = { before, targets, additions };
+    const checked = await this.call('titleCheck', validation);
+    if (!checked.ok) throw Error(`${rail.name}: ${checked.detail}. No carousel was saved.`);
     await this.call('publishCarousel'); await this.wait('dialog'); await this.call('schedule', { position: rail.position });
     await this.wait('navigationReady', 60000); await this.pause(800); await this.overview(); await this.open(rail);
-    if (!verify((await this.call('pins')).pins)) throw Error(`Saved titles did not verify on ${rail.name}. Check Slate.`);
+    const saved = await this.call('titleCheck', validation);
+    if (!saved.ok) throw Error(`Saved titles did not verify on ${rail.name}: ${saved.detail}. Check Slate.`);
     this.completed++; this.statuses[rail.name] = 'Saved'; this.log(`${rail.name}: saved and verified (Column A position ${rail.position}).`);
     await this.overview();
   }

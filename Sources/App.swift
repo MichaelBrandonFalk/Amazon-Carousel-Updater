@@ -319,7 +319,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
     func pause(_ milliseconds: UInt64) async throws { try checkCancelled(); try await Task.sleep(nanoseconds: milliseconds * 1_000_000); try checkCancelled() }
 
     func call(_ command: String, _ input: [String: Any] = [:]) async throws -> [String: Any] {
-        if command != "cancel" && command != "titleKeyTarget" { try checkCancelled() }
+        if command != "cancel" && command != "titleKeyTarget" && command != "endTitleMove" { try checkCancelled() }
         if command == "moveTitle" { return try await moveTitleWithNativeKeys(input) }
         guard selfTest || webView.url?.host == "slate.amazon.com" else { throw AppFailure("Sign in to Amazon in the app browser, then open the Slate storefront before running.") }
         if !selfTest, let target = URL(string: storefront) {
@@ -357,14 +357,18 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         if source == target { return try await call("pins") }
         do {
             try await sendTitleKey("Space"); try await pause(350)
-            for _ in 0..<abs(source - target) {
+            for step in 1...abs(source - target) {
                 let previous = try await call("titleDragState")
                 try await sendTitleKey(source > target ? "ArrowUp" : "ArrowDown")
-                _ = try await call("waitTitleStep", ["previous": previous])
+                _ = try await call("waitTitleStep", ["previous": previous, "position": source + (source > target ? -step : step)])
             }
             try await sendTitleKey("Space")
             return try await call("verifyTitleMove", input)
-        } catch { try? await sendTitleKey("Escape", allowCancelled: true); throw error }
+        } catch {
+            try? await sendTitleKey("Escape", allowCancelled: true)
+            _ = try? await call("endTitleMove")
+            throw error
+        }
     }
     func waitForState(_ flag: String, timeout: TimeInterval = 30) async throws -> [String: Any] {
         let deadline = Date().addingTimeInterval(timeout)
@@ -491,8 +495,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         }
         _ = try await call("clearSearch")
         for (index, title) in targets.enumerated() { _ = try await call("moveTitle", ["title": title, "position": index]) }
-        let after = try await call("pins")["pins"] as? [String] ?? []
-        guard Array(after.prefix(targets.count)) == targets, preservesExtras(before: before, after: after, targets: targets) else { throw AppFailure("Title order or preservation check failed on \(rail.name). No carousel was saved.") }
+        let validation = ["before": before, "targets": targets, "additions": additions]
+        let checked = try await call("titleCheck", validation)
+        guard checked["ok"] as? Bool == true else { throw AppFailure("\(rail.name): \(checked["detail"] as? String ?? "Title validation failed"). No carousel was saved.") }
         _ = try await call("publishCarousel")
         _ = try await waitForState("dialog")
         _ = try await call("schedule", ["position": rail.position])
@@ -500,8 +505,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         try await pause(800)
         try await returnToOverview()
         try await openEditor(rail)
-        let saved = try await call("pins")["pins"] as? [String] ?? []
-        guard Array(saved.prefix(targets.count)) == targets, preservesExtras(before: before, after: saved, targets: targets) else { throw AppFailure("Saved titles did not verify on \(rail.name). Check the carousel in Slate.") }
+        let saved = try await call("titleCheck", validation)
+        guard saved["ok"] as? Bool == true else { throw AppFailure("Saved titles did not verify on \(rail.name): \(saved["detail"] as? String ?? "Title validation failed"). Check the carousel in Slate.") }
         completedRails += 1; statuses[rail.name] = "Saved"
         log("\(rail.name): saved and verified (Column A position \(rail.position)).")
         try await returnToOverview()

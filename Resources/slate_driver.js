@@ -36,6 +36,42 @@
     return text(copy).replace(/^\d+\s*/, '').trim();
   };
   const pins = () => rows().map(rowTitle);
+  if (!window.ACUInputGuard) {
+    const guard = event => {
+      if (!window.ACUTitleMove) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+    };
+    for (const type of ['pointerdown', 'mousedown', 'click', 'wheel', 'touchstart']) document.addEventListener(type, guard, { capture: true, passive: false });
+    window.ACUInputGuard = true;
+  }
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const settledPins = async () => {
+    let previous = pins(), since = Date.now();
+    await wait(() => {
+      const current = pins();
+      if (!same(current, previous)) { previous = current; since = Date.now(); }
+      return Date.now() - since >= 600;
+    }, 8000);
+    return previous;
+  };
+  const titleCheck = async ({ before, targets, additions = [] }) => {
+    const current = await settledPins();
+    const counts = values => values.reduce((map, value) => map.set(value, (map.get(value) || 0) + 1), new Map());
+    const expectedCounts = counts(before.concat(additions)), actualCounts = counts(current);
+    const missing = [], unexpected = [];
+    for (const [title, count] of expectedCounts) if ((actualCounts.get(title) || 0) < count) missing.push(title);
+    for (const [title, count] of actualCounts) if ((expectedCounts.get(title) || 0) < count) unexpected.push(title);
+    const extras = values => values.filter(title => !targets.includes(title));
+    const wantedExtras = extras(before), actualExtras = extras(current);
+    const mismatch = wantedExtras.findIndex((title, i) => actualExtras[i] !== title);
+    const problems = [];
+    const slot = targets.findIndex((title, i) => current[i] !== title);
+    if (slot >= 0) problems.push(`slot ${slot + 1}: expected "${targets[slot]}", found "${current[slot] || '(empty)'}"`);
+    if (missing.length) problems.push('missing titles/copies: ' + missing.join('; '));
+    if (unexpected.length) problems.push('unexpected titles/copies: ' + unexpected.join('; '));
+    if (mismatch >= 0) problems.push(`remaining title ${mismatch + 1}: expected "${wantedExtras[mismatch]}", found "${actualExtras[mismatch] || '(empty)'}"`);
+    return { ok: problems.length === 0, detail: problems.join('. '), pins: current };
+  };
   const railRows = () => Array.from(document.querySelectorAll('.storefront-carousel'));
   const order = () => railRows().map(el => {
     const header = el.querySelector('.storefront-carousel-header');
@@ -99,12 +135,15 @@
     const current = rows(), source = current.findIndex(el => rowTitle(el) === title);
     if (source < 0 || !Number.isInteger(position) || position < 0 || position >= current.length) throw Error('Pinned title or target position is unavailable.');
     const row = current[source];
+    if (source === position) { window.ACUTitleMove = null; return { source, position }; }
     const handleSelector = '[data-rbd-drag-handle-draggable-id],[data-rfd-drag-handle-draggable-id]';
     const handle = row.matches(handleSelector) ? row : row.querySelector(handleSelector) || (row.matches('[role="button"][tabindex]') ? row : null);
     if (!handle || hasLabel(handle, 'Remove')) throw Error('Cannot identify a safe title drag handle. No carousel was saved.');
     row.scrollIntoView({ block: 'center' }); handle.focus({ preventScroll: true });
     if (source !== position && document.activeElement !== handle) throw Error('Cannot focus the title drag handle. No carousel was saved.');
-    window.ACUTitleMove = { title, position, handle, handleId: handle.getAttribute('data-rbd-drag-handle-draggable-id') || handle.getAttribute('data-rfd-drag-handle-draggable-id') };
+    const expected = current.map(rowTitle);
+    expected.splice(position, 0, expected.splice(source, 1)[0]);
+    window.ACUTitleMove = { title, position, expected, handle, handleId: handle.getAttribute('data-rbd-drag-handle-draggable-id') || handle.getAttribute('data-rfd-drag-handle-draggable-id') };
     return { source, position };
   };
   const titleKeyTarget = () => {
@@ -122,20 +161,26 @@
     return { index: pins().indexOf(move.title), top: move.handle.getBoundingClientRect().top,
       announcement: Array.from(document.querySelectorAll('[id^="rbd-announcement-"],[id^="rfd-announcement-"]')).map(text).join(' ') };
   };
-  const waitTitleStep = async ({ previous }) => {
+  const waitTitleStep = async ({ previous, position }) => {
     await wait(() => {
       const now = titleDragState();
-      return now.index !== previous.index || now.announcement !== previous.announcement || Math.abs(now.top - previous.top) > 1;
+      if (/cancelled/i.test(now.announcement)) throw Error('Slate cancelled the title drag. No carousel was saved.');
+      const destination = now.announcement.match(/(?:to|in) position\s+(\d+)\s*$/i);
+      // Scrolling and animation are not evidence that an arrow moved an item.
+      return now.announcement !== previous.announcement && destination && Number(destination[1]) === position + 1;
     }, 3000);
     // React drag sensors reject movement while the previous step is animating.
     await sleep(300); check();
     return titleDragState();
   };
   const verifyTitleMove = async ({ title, position }) => {
-    try { await wait(() => pins()[position] === title, 3000); }
-    catch { throw Error('Keyboard reorder did not verify for ' + title + '. No carousel was saved.'); }
+    const expected = window.ACUTitleMove.expected;
+    try { await wait(() => same(pins(), expected), 8000); }
+    catch { throw Error('Complete list did not verify after moving ' + title + ' to slot ' + (position + 1) + '. No carousel was saved.'); }
+    const current = await settledPins();
+    if (!same(current, expected)) throw Error('Title list changed after the drop settled. No carousel was saved.');
     window.ACUTitleMove = null;
-    return { pins: pins() };
+    return { pins: current };
   };
   const dialog = () => Array.from(document.querySelectorAll('[role="dialog"],.modal')).find(el => visible(el) && text(el).includes('Schedule carousel'));
   const schedule = async ({ position }) => {
@@ -151,7 +196,7 @@
     return { submitted: true };
   };
   window.ACU = {
-    state, order: () => ({ order: order() }), pins: () => ({ pins: pins(), editorName: editorName() }),
+    state, titleCheck, endTitleMove: () => { window.ACUTitleMove = null; return {}; }, order: () => ({ order: order() }), pins: async () => ({ pins: await settledPins(), editorName: editorName() }),
     resume: () => { window.ACUCancelled = false; return {}; },
     cancel: () => { window.ACUCancelled = true; return {}; },
     open: ({ name }) => {

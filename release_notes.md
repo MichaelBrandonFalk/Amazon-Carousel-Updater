@@ -1,4 +1,15 @@
-# V1.5
+# V1.6
+
+- Wait for settled title lists before taking the original inventory and validating content.
+- Verify the complete expected list after every drop, including duplicate counts and the order of all other titles, rather than accepting only the moved title reaching its slot.
+- Require the announced destination after each keyboard arrow. Scrolling and row animation no longer count as successful movement.
+- Block pointer clicks and wheel input inside Slate while a title move is active; restore interaction after success, cancellation, or failure. Stop remains available outside the Slate pane.
+- Replace the generic order/preservation error with the exact leading slot, missing/extra title copies, or first remaining-title mismatch. Reports stay local.
+- Add native Mac and Electron regression coverage for temporary tail-list changes during drop rendering and detailed validation failures.
+
+Validation: synthetic browser fixtures and workbook checks; no live Slate save or publish. This release hardens known timing weaknesses and improves diagnosis. The reported V1.5 preservation failure could not be conclusively attributed because V1.5 did not record its original list or failing condition.
+
+## V1.5
 
 - Prefer drag-handle attributes on the row itself before checking nested handles. Never fall back to an arbitrary nested button, which might be Remove.
 - Add native Mac and Electron regression coverage for a draggable row containing a focusable Remove control, in addition to lost-focus protection.

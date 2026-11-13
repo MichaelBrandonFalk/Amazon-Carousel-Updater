@@ -30,7 +30,7 @@ function assertSlate() {
   const target = new URL(storefront), prefix = target.pathname.replace(/storefront\/overview$/, '');
   if (url.origin !== 'https://slate.amazon.com' || !url.pathname.startsWith(prefix)) throw Error('Sign in, then open the selected Slate storefront before running.');
 }
-const commands = new Set(['state', 'order', 'pins', 'resume', 'cancel', 'open', 'overview', 'moveRail', 'search', 'choose', 'clearSearch', 'publishCarousel', 'schedule', 'publishStorefront', 'prepareTitleMove', 'titleDragState', 'titleKeyTarget', 'waitTitleStep', 'verifyTitleMove']);
+const commands = new Set(['state', 'order', 'pins', 'titleCheck', 'endTitleMove', 'resume', 'cancel', 'open', 'overview', 'moveRail', 'search', 'choose', 'clearSearch', 'publishCarousel', 'schedule', 'publishStorefront', 'prepareTitleMove', 'titleDragState', 'titleKeyTarget', 'waitTitleStep', 'verifyTitleMove']);
 async function sendTitleKey(key, cancelling = false) {
   assertSlate();
   if (!cancelling) engine.check();
@@ -49,11 +49,12 @@ async function moveTitle(input) {
     for (let i = 0; i < Math.abs(move.source - move.position); i++) {
       const previous = await adapter.call('titleDragState');
       await sendTitleKey(move.source > move.position ? 'ArrowUp' : 'ArrowDown');
-      await adapter.call('waitTitleStep', { previous });
+      await adapter.call('waitTitleStep', { previous, position: move.source + (move.source > move.position ? -(i + 1) : i + 1) });
     }
     await sendTitleKey('Space');
     return await adapter.call('verifyTitleMove', input);
   } catch (error) { try { await sendTitleKey('Escape', true); } catch {} throw error; }
+  finally { await adapter.call('endTitleMove'); }
 }
 const adapter = {
   publishDelay: selfTest ? 100 : 8000,

@@ -42,7 +42,9 @@ function renderEditor(name){lifted=null;current=name;titles=data.pins[name].slic
      if(!lifted){lifted={title,index:i,source:i,animating:false};announce('You have lifted the item in position '+(i+1));return}
      if(lifted.animating)return;
      const move=lifted;lifted=null;
-     setTimeout(()=>{titles.splice(move.source,1);titles.splice(move.index,0,move.title);renderRows();announce('You have dropped the item in position '+(move.index+1))},100);
+     setTimeout(()=>{titles.splice(move.source,1);titles.splice(move.index,0,move.title);renderRows();announce('You have dropped the item in position '+(move.index+1));
+      if(window.fixtureTransientDrop){setTimeout(()=>{const tail=Array.from(list.children).slice(3);tail.reverse().forEach(row=>list.append(row));window.fixtureTransientCount=(window.fixtureTransientCount||0)+1},30);setTimeout(renderRows,450)}
+     },100);
     }else if(lifted&&lifted.title===title&&!lifted.animating){
      const destination=lifted.index+(event.code==='ArrowUp'?-1:1);
      if(destination<0||destination>=titles.length)return;

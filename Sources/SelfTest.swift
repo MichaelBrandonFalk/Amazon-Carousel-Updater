@@ -8,8 +8,19 @@ extension AppController {
             webView.loadFileURL(fixture, allowingReadAccessTo: fixture.deletingLastPathComponent())
             _ = try await waitForState("overview")
             guard !webView.configuration.websiteDataStore.isPersistent else { throw AppFailure("Tests must use a private browser session") }
-            _ = try await webView.evaluateJavaScript("window.fixtureRowHandle=true;renderEditor('Romance')")
+            _ = try await webView.evaluateJavaScript("window.fixtureRowHandle=true;window.fixtureTransientDrop=true;renderEditor('Romance')")
+            _ = try await call("prepareTitleMove", ["title": "Existing A", "position": 1])
+            guard (try await webView.evaluateJavaScript("document.dispatchEvent(new WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY:100}))")) as? Bool == false else { throw AppFailure("Wheel input was not blocked during a move") }
+            _ = try await call("endTitleMove")
+            guard (try await webView.evaluateJavaScript("document.dispatchEvent(new WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY:100}))")) as? Bool == true else { throw AppFailure("Input was not restored after a move") }
             _ = try await call("moveTitle", ["title": "Existing A", "position": 1])
+            guard (try await webView.evaluateJavaScript("window.fixtureTransientCount > 0")) as? Bool == true else { throw AppFailure("Delayed full-list rendering was not exercised") }
+            let baseline = try await call("pins")["pins"] as? [String] ?? []
+            let valid = try await call("titleCheck", ["before": baseline, "targets": Array(baseline.prefix(2))])
+            guard valid["ok"] as? Bool == true else { throw AppFailure("Stable title list failed validation") }
+            let invalid = try await call("titleCheck", ["before": baseline + ["Missing synthetic title"], "targets": ["Wrong synthetic title"]])
+            guard invalid["ok"] as? Bool == false, (invalid["detail"] as? String ?? "").contains("missing titles/copies: Missing synthetic title") else { throw AppFailure("Missing-title diagnostics did not verify") }
+            _ = try await webView.evaluateJavaScript("window.fixtureTransientDrop=false")
             guard (try await webView.evaluateJavaScript("window.fixtureRemoveAttempts || 0")) as? Int == 0 else { throw AppFailure("A nested Remove button was selected instead of the drag handle") }
             _ = try await webView.evaluateJavaScript("window.fixtureRowHandle=false")
             _ = try await webView.evaluateJavaScript("renderEditor('Romance');window.fixtureStealFocus=true")
