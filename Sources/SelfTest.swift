@@ -7,6 +7,20 @@ extension AppController {
             guard let fixture = Bundle.main.url(forResource: "slate_fixture", withExtension: "html") else { throw AppFailure("Missing synthetic fixture") }
             webView.loadFileURL(fixture, allowingReadAccessTo: fixture.deletingLastPathComponent())
             _ = try await waitForState("overview")
+            let originalDocument = try await call("state")["documentID"] as? String
+            try await freshOverview()
+            guard try await call("state")["documentID"] as? String != originalDocument else { throw AppFailure("Fresh-run navigation reused the old page") }
+            testOnly = true
+            var saveBlocked = false
+            do { _ = try await call("publishCarousel") }
+            catch { saveBlocked = error.localizedDescription.contains("Saving is blocked") }
+            testOnly = false
+            guard saveBlocked else { throw AppFailure("Workbook test mode did not block saves") }
+            _ = try await webView.evaluateJavaScript("window.fixtureNumericOriginal=data.pins['Faith Favorites'];data.pins['Faith Favorites']=['5,000 Synthetic Stars','2026','Alpha','Beta','Gamma','Delta'];renderEditor('Faith Favorites')")
+            let numericPins = try await call("pins")["pins"] as? [String] ?? []
+            guard Array(numericPins.prefix(2)) == ["5,000 Synthetic Stars", "2026"] else { throw AppFailure("Numeric title names lost their leading digits") }
+            _ = try await call("moveTitle", ["title": "5,000 Synthetic Stars", "position": 1])
+            _ = try await webView.evaluateJavaScript("data.pins['Faith Favorites']=window.fixtureNumericOriginal;renderOverview()")
             guard !webView.configuration.websiteDataStore.isPersistent else { throw AppFailure("Tests must use a private browser session") }
             _ = try await webView.evaluateJavaScript("window.fixtureRowHandle=true;window.fixtureTransientDrop=true;window.fixtureAvailabilityNote=true;renderEditor('Romance')")
             _ = try await call("prepareTitleMove", ["title": "Existing A", "position": 1])
@@ -38,7 +52,7 @@ extension AppController {
             _ = try await webView.evaluateJavaScript("window.fixtureStealFocus=false;renderOverview()")
             let romance = Rail(position: 1, name: "Romance", titles: ["Target One", "Target Two", "Target Three", "Target Four", "Target Five", "Target Six"], dynamic: false)
             let collection = Rail(position: 2, name: "Faith Favorites", titles: ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta"], dynamic: false)
-            let unresolvedRail = Rail(position: 3, name: "Unresolved rail", titles: ["Missing Catalog Title"], dynamic: false)
+            let unresolvedRail = Rail(position: 3, name: "Unresolved rail", titles: ["Three", "Missing Catalog Title", "One"], dynamic: false)
             sheets = [RailSheet(name: "Synthetic weekly sheet", rails: [romance, collection, unresolvedRail])]
             workbookName = "synthetic-workbook.xlsx"; fileLabel.stringValue = workbookName
             sheetPopup.removeAllItems(); sheetPopup.addItem(withTitle: "Synthetic weekly sheet"); table.reloadData()
@@ -47,10 +61,11 @@ extension AppController {
             try await returnToOverview()
             try await updateContent(romance)
             try await updateContent(collection)
-            guard completedRails == 2, unresolved.count == 1 else { throw AppFailure("Expected two verified saves and one unresolved rail") }
+            guard completedRails == 3, unresolved.count == 1 else { throw AppFailure("Expected three verified saves including one partial update") }
             guard (try await webView.evaluateJavaScript("window.fixtureTrustedKeys > 0")) as? Bool == true else { throw AppFailure("Title moves did not use native browser keyboard input") }
             let target = [reservedRail, "Romance", "Faith Favorites", "Unresolved rail"]
             try await stageOrder(target)
+            _ = try await webView.evaluateJavaScript("window.fixturePublishDelay=9000")
             _ = try await call("publishStorefront")
             webView.reload()
             try await pause(500)

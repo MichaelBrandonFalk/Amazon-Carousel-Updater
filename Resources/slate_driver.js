@@ -35,9 +35,15 @@
     // decorations. Neither availability warnings nor controls identify a title.
     const rendered = el.innerText;
     if (typeof rendered !== 'string' || !rendered.trim()) throw Error('Cannot read the rendered pinned title. No carousel was saved.');
-    return rendered.replace(/\s+/g, ' ').trim()
+    const value = rendered.replace(/\s+/g, ' ').trim();
+    const ordinalNode = Array.from(el.querySelectorAll('*')).find(child => visible(child) && !child.children.length && /^\d+$/.test(text(child)) && value.startsWith(text(child)));
+    const ordinal = ordinalNode ? text(ordinalNode) : '';
+    if (!ordinal) throw Error('Cannot identify the pinned-title ordinal. No carousel was saved.');
+    // CSS spacing is not a text separator: real Slate can render "8Title".
+    // Remove exactly the row ordinal, preserving titles that begin with digits.
+    return value.slice(ordinal.length).trim()
       .replace(/\s*Note:\s*This title is currently out of window for this territory\.\s*$/i, '')
-      .replace(/\s*Remove\s*$/, '').replace(/^\d+\s+/, '').trim();
+      .replace(/\s*Remove\s*$/, '').trim();
   };
   const pins = () => rows().map(rowTitle);
   if (!window.ACUInputGuard) {
@@ -100,6 +106,7 @@
     return crumbs.trim();
   };
   const state = () => ({
+    documentID: window.ACUDocumentID ||= String(Date.now()) + Math.random(),
     host: location.hostname,
     url: location.href,
     overview: railRows().length > 0,
@@ -111,6 +118,41 @@
     order: railRows().length ? order() : [],
     publishEnabled: !!button(document, 'Publish changes')
   });
+  const waitEditor = async ({ name }) => {
+    let latest;
+    try {
+      await wait(() => { latest = state(); return !latest.overview && latest.editor && norm(latest.editorName) === norm(name); }, 30000);
+      await settledPins();
+      latest = state();
+      if (!latest.overview && latest.editor && norm(latest.editorName) === norm(name)) return latest;
+    } catch { check(); }
+    throw Error('Editor did not finish loading for ' + name + '; visible editor: ' + (latest?.editorName || '(not ready)') + '. No carousel was saved.');
+  };
+  const verifySavedOrder = async ({ expected }) => {
+    let since = Date.now();
+    try {
+      await wait(() => {
+        const current = order();
+        if (!same(current.map(norm), expected.map(norm))) { since = Date.now(); return false; }
+        return Date.now() - since >= 600;
+      }, 5000);
+    } catch { check(); throw Error('Saved storefront order mismatch. ' + listDifference(expected, order())); }
+    return { order: order() };
+  };
+  const publishStorefront = async () => {
+    const successNodes = () => Array.from(document.querySelectorAll('*')).filter(el => visible(el) && text(el).length < 200 && /successfully\s+re[- ]?ordered\s+carousels/i.test(text(el)) && !Array.from(el.children).some(child => /successfully\s+re[- ]?ordered\s+carousels/i.test(text(child))));
+    let acknowledged = false;
+    const observer = new MutationObserver(records => {
+      acknowledged ||= successNodes().some(el => records.some(record => el === record.target || el.contains(record.target) || Array.from(record.addedNodes).some(node => node === el || node.contains?.(el))));
+    });
+    observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+    try {
+      click(button(document, 'Publish changes'));
+      try { await wait(() => acknowledged, 90000); }
+      catch { check(); throw Error('Slate did not confirm the publish request. Its outcome is unknown; no second publish or automatic reload was attempted.'); }
+      return { submitted: true, acknowledged: true };
+    } finally { observer.disconnect(); }
+  };
   const candidates = () => {
     const scope = section().querySelector('.title-search');
     if (!scope) throw Error('Title search is not available in the safe section.');
@@ -208,7 +250,7 @@
     return { submitted: true };
   };
   window.ACU = {
-    state, titleCheck, endTitleMove: () => { window.ACUTitleMove = null; return {}; }, order: () => ({ order: order() }), pins: async () => ({ pins: await settledPins(), editorName: editorName() }),
+    state, waitEditor, verifySavedOrder, titleCheck, endTitleMove: () => { window.ACUTitleMove = null; return {}; }, order: () => ({ order: order() }), pins: async () => ({ pins: await settledPins(), editorName: editorName() }),
     resume: () => { window.ACUCancelled = false; return {}; },
     cancel: () => { window.ACUCancelled = true; return {}; },
     open: ({ name }) => {
@@ -241,6 +283,6 @@
       click(control); return {};
     },
     schedule,
-    publishStorefront: () => { click(button(document, 'Publish changes')); return { submitted: true }; }
+    publishStorefront
   };
 })();

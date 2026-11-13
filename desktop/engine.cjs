@@ -45,7 +45,7 @@ class Engine {
   }
   async open(rail) {
     await this.wait('overview'); await this.call('open', { name: rail.name });
-    const state = await this.wait('editor');
+    const state = await this.call('waitEditor', { name: rail.name });
     if (normalize(state.editorName) !== normalize(rail.name)) throw Error(`Opened ${state.editorName}, expected ${rail.name}.`);
     await this.call('resume');
   }
@@ -56,54 +56,67 @@ class Engine {
     await this.call('overview'); await this.wait('overview');
   }
   async unresolvedTitle(rail, title, detail = '') {
-    const message = `${rail.name}: unresolved title ${title}${detail ? ' (' + detail + ')' : ''}; carousel not saved. Continuing with remaining carousels.`;
-    this.unresolved.push(message); this.statuses[rail.name] = 'Unresolved'; this.log(message);
+    const message = `${rail.name}: skipped title ${title}${detail ? ' (' + detail + ')' : ''}; continuing with other titles in this carousel.`;
+    this.unresolved.push(message); this.log(message);
     try { await this.call('clearSearch'); } catch { this.check(); }
-    await this.overview();
   }
   async updateContent(rail) {
     this.statuses[rail.name] = 'Checking'; this.emit(); await this.open(rail);
     const before = (await this.call('pins')).pins, targets = [], additions = [];
+    let working = before.slice(); const warningStart = this.unresolved.length;
     for (const title of rail.titles) {
-      const existing = resolveExisting(title, before);
+      const existing = resolveExisting(title, working);
       if (existing) {
+        if (targets.includes(existing)) { await this.unresolvedTitle(rail, title, 'duplicates an already matched title'); continue; }
         targets.push(existing);
         if (normalize(existing) !== normalize(title)) this.log(`${rail.name}: ${title} -> ${existing}`);
       } else {
         let result;
         try { result = await this.call('search', { title }); }
-        catch (error) { this.check(); await this.unresolvedTitle(rail, title, error.message); return; }
+        catch (error) { this.check(); await this.unresolvedTitle(rail, title, error.message); continue; }
         if (result.matches.length !== 1) {
-          await this.unresolvedTitle(rail, title, 'no unique catalog match'); return;
+          await this.unresolvedTitle(rail, title, 'no unique catalog match'); continue;
         }
-        targets.push(result.matches[0].title); additions.push(result.matches[0].title);
+        const match = result.matches[0].title;
+        if (targets.includes(match)) { await this.unresolvedTitle(rail, title, 'duplicates an already matched title'); continue; }
+        try { await this.call('choose', { title: match }); }
+        catch (error) {
+          this.check();
+          const observed = (await this.call('pins')).pins;
+          if (JSON.stringify(observed) === JSON.stringify(working)) { await this.unresolvedTitle(rail, title, error.message); continue; }
+          if (JSON.stringify(observed) !== JSON.stringify([...working, match])) throw Error(`${rail.name}: uncertain title addition; no carousel was saved.`);
+        }
+        const observed = (await this.call('pins')).pins;
+        if (JSON.stringify(observed) !== JSON.stringify([...working, match])) throw Error(`${rail.name}: added title inventory did not verify; no carousel was saved.`);
+        working = observed; targets.push(match); additions.push(match);
+        this.log(`${rail.name}: added ${match}.`);
       }
     }
+    const partial = this.unresolved.length > warningStart;
+    if (!targets.length) {
+      this.statuses[rail.name] = 'No matched titles'; this.log(`${rail.name}: no titles matched; carousel unchanged.`);
+      await this.call('clearSearch'); await this.overview(); return;
+    }
     if (JSON.stringify(before.slice(0, targets.length)) === JSON.stringify(targets)) {
-      this.statuses[rail.name] = 'Already correct'; this.log(`${rail.name}: already correct.`);
+      this.statuses[rail.name] = partial ? 'Correct (partial)' : 'Already correct'; this.log(`${rail.name}: matched titles already correct${partial ? '; unresolved titles reported' : ''}.`);
       await this.call('clearSearch'); await this.overview(); return;
     }
     if (new Set(targets.map(normalize)).size !== targets.length) throw Error(`Two workbook titles resolve to the same catalog title on ${rail.name}.`);
     this.statuses[rail.name] = 'Updating'; this.emit();
-    for (const title of additions) {
-      let matches;
-      try { matches = (await this.call('search', { title })).matches; }
-      catch (error) { this.check(); await this.unresolvedTitle(rail, title, error.message); return; }
-      if (matches.length !== 1) { await this.unresolvedTitle(rail, title, 'catalog result changed'); return; }
-      try { await this.call('choose', { title }); }
-      catch (error) { this.check(); await this.unresolvedTitle(rail, title, error.message); return; }
-      this.log(`${rail.name}: added ${title}.`);
-    }
     await this.call('clearSearch');
     for (const [position, title] of targets.entries()) await this.call('moveTitle', { title, position });
     const validation = { before, targets, additions };
     const checked = await this.call('titleCheck', validation);
     if (!checked.ok) throw Error(`${rail.name}: ${checked.detail}. No carousel was saved.`);
+    if (checked.pins.length < 5) {
+      this.statuses[rail.name] = 'Too few titles'; this.log(`${rail.name}: fewer than five total titles; carousel not saved.`);
+      await this.overview(); return;
+    }
     await this.call('publishCarousel'); await this.wait('dialog'); await this.call('schedule', { position: rail.position });
     await this.wait('navigationReady', 60000); await this.pause(800); await this.overview(); await this.open(rail);
     const saved = await this.call('titleCheck', validation);
     if (!saved.ok) throw Error(`Saved titles did not verify on ${rail.name}: ${saved.detail}. Check Slate.`);
-    this.completed++; this.statuses[rail.name] = 'Saved'; this.log(`${rail.name}: saved and verified (Column A position ${rail.position}).`);
+    this.completed++; this.statuses[rail.name] = partial ? 'Saved (partial)' : 'Saved'; this.log(`${rail.name}: saved and verified ${targets.length}/${rail.titles.length} matched titles (Column A position ${rail.position}); all existing titles preserved.`);
     await this.overview();
   }
   async stage(target) {
@@ -121,9 +134,10 @@ class Engine {
   }
   async run(sheet, full) {
     if (this.busy) throw Error('An update is already running.');
-    this.busy = true; this.cancelled = false; this.reset();
+    this.busy = true; this.cancelled = false; this.logs = []; this.reset();
     try {
       await this.call('resume');
+      if (this.adapter.freshOverview) await this.adapter.freshOverview();
       await this.overview();
       this.verifyNames(sheet.rails, (await this.wait('overview', 10000)).order);
       if (full) for (const [index, rail] of sheet.rails.entries()) {
@@ -144,11 +158,19 @@ class Engine {
     if (this.busy || !this.staged) throw Error('Run the update before publishing.');
     const target = this.staged.slice(); this.busy = true; this.cancelled = false; this.emit();
     try {
-      if (!sameOrder((await this.call('order')).order.slice(0, target.length), target)) throw Error('Order changed since verification. Run the update again.');
-      await this.call('publishStorefront'); this.status = 'Publishing - checking saved order'; this.emit();
-      await this.pause(this.adapter.publishDelay ?? 8000); await this.adapter.reload();
-      const saved = await this.wait('overview');
-      if (!sameOrder(saved.order.slice(0, target.length), target)) throw Error('Saved storefront order differs after reload. Publish did not verify.');
+      const expected = (await this.call('order')).order;
+      if (!sameOrder(expected.slice(0, target.length), target)) throw Error('Order changed since verification. Run the update again.');
+      this.staged = null;
+      this.status = 'Publishing - waiting for Slate confirmation'; this.emit();
+      await this.call('publishStorefront');
+      let verified = false, lastError;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (attempt) await this.pause(this.adapter.verificationPause ?? 3000);
+        await this.adapter.reload(); await this.wait('overview');
+        try { await this.call('verifySavedOrder', { expected }); verified = true; break; }
+        catch (error) { this.check(); lastError = error; this.log(`Publish verification observation ${attempt + 1}: ${error.message}`); }
+      }
+      if (!verified) throw Error(`${lastError.message}. No second publish was submitted.`);
       this.status = 'Published and verified'; this.log('Published storefront order verified after reload.');
     } catch (error) { this.status = 'Needs attention'; this.log(error.message); throw error; }
     finally { this.staged = null; this.busy = false; this.emit(); }

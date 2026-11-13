@@ -1,4 +1,17 @@
-# V1.7
+# V1.8
+
+- Read the actual ordinal element separately from rendered title text. CSS spacing can leave the ordinal and title concatenated; title digits must be preserved.
+- Wait for the requested editor name and settled rows rather than accepting an initial Untitled carousel shell or the previous editor during navigation.
+- Begin runs on a newly loaded Overview document and clear per-run logs, discarding previous unsaved page/drag state while retaining the optional local sign-in session.
+- Add a Mac File-menu workbook test that exercises additions/reordering without submitting saves. Save and publish commands are blocked, final drafts are discarded, and reports distinguish draft verification from saves.
+- Add inline ordinal/title fixture markup, delayed editor identity, numeric title, fresh-document, and save-blocking regressions.
+- Skip missing titles individually and update the matched subset in workbook order, preserving the complete existing inventory. Report partial saves and leave zero-match carousels unchanged.
+- Wait for Slate's new reorder-success message before reloading, verify the entire persisted order across bounded read-only observations, and never automatically resubmit a publish.
+- Add partial-update, failed-addition, zero-match, unknown-publish, stale-read, and publish-delayed-beyond-eight-seconds regressions.
+
+Validation: 24 unit tests and native Mac/Electron synthetic browser tests, including a publish delayed beyond eight seconds. Local operator-authorized testing with the supplied workbook verified live partial carousel saves after reopening and a single final storefront publish after a fresh reload. Windows/Linux distributions require packaged-app CI checks before release. No workbook, account data, private screenshots, or run reports are committed.
+
+## V1.7
 
 - Read pinned-title names from the rendered row rather than detached-clone textContent, which can include hidden decorations.
 - Exclude Slate's trailing Remove control and out-of-window availability warning, and normalize display whitespace. Warnings changing during a drag no longer masquerade as changes to the title inventory.

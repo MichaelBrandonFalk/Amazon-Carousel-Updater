@@ -35,10 +35,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
     var cancelled = false
     var stagedOrder: [String]?
     var completedRails = 0
+    var verifiedDrafts = 0
     var unresolved: [String] = []
     var currentTask: Task<Void, Never>?
     var driver = ""
     var selfTest = CommandLine.arguments.contains("--self-test")
+    var testOnly = false
     var storefront: String {
         if selfTest { return "https://fixture.invalid/storefront/overview" }
         return UserDefaults.standard.string(forKey: "storefrontURL") ?? defaultStorefront
@@ -89,6 +91,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         let fileItem = NSMenuItem(), fileMenu = NSMenu(title: "File")
         fileMenu.addItem(withTitle: "Open Workbook…", action: #selector(chooseWorkbook), keyEquivalent: "o")
         fileMenu.addItem(withTitle: "Export Run Report…", action: #selector(exportReport), keyEquivalent: "s")
+        fileMenu.addItem(withTitle: "Test Workbook Without Saving", action: #selector(testWorkbook), keyEquivalent: "")
         fileMenu.addItem(withTitle: "Forget Amazon Sign-In…", action: #selector(forgetSignIn), keyEquivalent: "")
         fileItem.submenu = fileMenu; menu.addItem(fileItem)
         let editItem = NSMenuItem(), editMenu = NSMenu(title: "Edit")
@@ -279,7 +282,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         } catch { showError(error) }
     }
     @objc func sheetChanged() {
-        statuses = [:]; stagedOrder = nil; completedRails = 0; unresolved = []
+        statuses = [:]; stagedOrder = nil; completedRails = 0; verifiedDrafts = 0; unresolved = []
         table.reloadData(); statusLabel.stringValue = "\(selectedSheet?.rails.count ?? 0) rails • Top 10 stays first"
         updateControls()
     }
@@ -319,6 +322,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
     func pause(_ milliseconds: UInt64) async throws { try checkCancelled(); try await Task.sleep(nanoseconds: milliseconds * 1_000_000); try checkCancelled() }
 
     func call(_ command: String, _ input: [String: Any] = [:]) async throws -> [String: Any] {
+        if testOnly && ["publishCarousel", "schedule", "publishStorefront"].contains(command) { throw AppFailure("Saving is blocked during a workbook test.") }
         if command != "cancel" && command != "titleKeyTarget" && command != "endTitleMove" { try checkCancelled() }
         if command == "moveTitle" { return try await moveTitleWithNativeKeys(input) }
         guard selfTest || webView.url?.host == "slate.amazon.com" else { throw AppFailure("Sign in to Amazon in the app browser, then open the Slate storefront before running.") }
@@ -382,7 +386,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
     func openEditor(_ rail: Rail) async throws {
         _ = try await waitForState("overview")
         _ = try await call("open", ["name": rail.name])
-        let state = try await waitForState("editor")
+        let state = try await call("waitEditor", ["name": rail.name])
         let actualName = state["editorName"] as? String ?? ""
         guard normalized(actualName) == normalized(rail.name) else { throw AppFailure("Opened \(actualName), expected \(rail.name).") }
         _ = try await call("resume")
@@ -395,20 +399,37 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         _ = try await waitForState("overview")
     }
 
-    @objc func startUpdate() {
+    func freshOverview() async throws {
+        let previous = (try? await call("state"))?["documentID"] as? String
+        if selfTest { webView.reload() }
+        else if let url = URL(string: storefront) { webView.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)) }
+        let deadline = Date().addingTimeInterval(60)
+        while Date() < deadline {
+            try checkCancelled()
+            if let state = try? await call("state"), state["documentID"] as? String != previous, state["overview"] as? Bool == true { return }
+            try await pause(250)
+        }
+        throw AppFailure("Fresh Overview did not load. Sign in and retry.")
+    }
+    @objc func startUpdate() { beginUpdate(testOnly: false) }
+    @objc func testWorkbook() { beginUpdate(testOnly: true) }
+    func beginUpdate(testOnly: Bool) {
         guard !busy, let sheet = selectedSheet else { return }
-        let full = mode.selectedSegment == 0
-        if full {
+        self.testOnly = testOnly
+        let full = testOnly || mode.selectedSegment == 0
+        if full && !testOnly {
             let alert = NSAlert(); alert.messageText = "Save carousel content to Amazon?"
             alert.informativeText = "Update \(sheet.rails.filter { !$0.skipContent }.count) eligible carousel lists from \(sheet.name). Missing titles will be added and existing titles preserved. Each carousel's Schedule action saves immediately to this storefront. The final carousel order has a separate Publish Order step."
             alert.addButton(withTitle: "Run Full Update"); alert.addButton(withTitle: "Cancel")
             guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
-        busy = true; cancelled = false; stagedOrder = nil; completedRails = 0; unresolved = []; statuses = [:]; updateControls()
+        busy = true; cancelled = false; stagedOrder = nil; completedRails = 0; verifiedDrafts = 0; unresolved = []; statuses = [:]
+        logs = []; log("NEW RUN: \(testOnly ? "no-save test" : (full ? "full update" : "order only")) • \(workbookName)"); updateControls()
         currentTask = Task {
             do {
                 _ = try await call("resume")
-                try await returnToOverview()
+                try await freshOverview()
+                log(testOnly ? "TEST: fresh page loaded; all save and publish commands are blocked." : "Fresh Overview loaded; previous unsaved page state discarded.")
                 let initial = try await waitForState("overview", timeout: 10)
                 let initialOrder = initial["order"] as? [String] ?? []
                 try verifyTargetNames(sheet.rails, existing: initialOrder)
@@ -418,10 +439,27 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
                         try checkCancelled()
                         statusLabel.stringValue = "\(index + 1)/\(sheet.rails.count): \(rail.name)"
                         if rail.skipContent { statuses[rail.name] = "Order only"; log("\(rail.name): content skipped.") }
-                        else { try await updateContent(rail) }
+                        else {
+                            do { try await updateContent(rail) }
+                            catch {
+                                if !testOnly { throw error }
+                                try checkCancelled()
+                                statuses[rail.name] = "Test failed"; log("TEST FAILED \(rail.name): \(error.localizedDescription)")
+                                try await freshOverview()
+                            }
+                        }
                         progress.doubleValue = Double(index + 1) / Double(sheet.rails.count) * 85
                         table.reloadData()
                     }
+                }
+                if testOnly {
+                    try await returnToOverview()
+                    try await stageOrder([reservedRail] + sheet.rails.map(\.name))
+                    log("TEST VERIFIED: complete storefront carousel order, Top 10 first, and extra rails preserved; no publish submitted.")
+                    try await freshOverview()
+                    statusLabel.stringValue = "Test complete • \(verifiedDrafts) drafts verified • \(unresolved.count) unresolved • \(statuses.values.filter { $0 == "Test failed" }.count) failed"
+                    log("TEST COMPLETE: no carousel or storefront saves were submitted; final unsaved draft discarded.")
+                    busy = false; self.testOnly = false; table.reloadData(); updateControls(); return
                 }
                 try await returnToOverview()
                 let target = [reservedRail] + sheet.rails.map(\.name)
@@ -438,7 +476,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
                 log(error.localizedDescription)
                 if !cancelled { showError(error) }
             }
-            busy = false; updateControls()
+            busy = false; self.testOnly = false; updateControls()
         }
     }
 
@@ -463,41 +501,61 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         let before = try await call("pins")["pins"] as? [String] ?? []
         var targets: [String] = []
         var additions: [String] = []
+        var working = before
+        let warningStart = unresolved.count
         for title in rail.titles {
-            if let resolved = resolveExisting(title, pins: before) {
+            if let resolved = resolveExisting(title, pins: working) {
+                if targets.contains(resolved) { try await unresolvedTitle(rail, title: title, detail: "duplicates an already matched title"); continue }
                 targets.append(resolved)
                 if normalized(resolved) != normalized(title) { log("\(rail.name): \(title) → \(resolved)") }
             } else {
                 let result: [String: Any]
                 do { result = try await call("search", ["title": title]) }
-                catch { try checkCancelled(); try await unresolvedTitle(rail, title: title, detail: error.localizedDescription); return }
+                catch { try checkCancelled(); try await unresolvedTitle(rail, title: title, detail: error.localizedDescription); continue }
                 let matches = result["matches"] as? [[String: Any]] ?? []
                 guard matches.count == 1, let match = matches.first?["title"] as? String else {
-                    try await unresolvedTitle(rail, title: title, detail: "no unique catalog match"); return
+                    try await unresolvedTitle(rail, title: title, detail: "no unique catalog match"); continue
                 }
+                if targets.contains(match) { try await unresolvedTitle(rail, title: title, detail: "duplicates an already matched title"); continue }
+                do { _ = try await call("choose", ["title": match]) }
+                catch {
+                    try checkCancelled()
+                    let observed = try await call("pins")["pins"] as? [String] ?? []
+                    if observed == working { try await unresolvedTitle(rail, title: title, detail: error.localizedDescription); continue }
+                    guard observed == working + [match] else { throw AppFailure("\(rail.name): uncertain title addition; no carousel was saved.") }
+                }
+                let observed = try await call("pins")["pins"] as? [String] ?? []
+                guard observed == working + [match] else { throw AppFailure("\(rail.name): added title inventory did not verify; no carousel was saved.") }
+                working = observed
                 targets.append(match); additions.append(match)
+                log("\(rail.name): added \(match).")
             }
         }
+        let partial = unresolved.count > warningStart
+        if targets.isEmpty {
+            statuses[rail.name] = "No matched titles"; log("\(rail.name): no titles matched; carousel unchanged.")
+            _ = try await call("clearSearch"); try await returnToOverview(); return
+        }
         if Array(before.prefix(targets.count)) == targets {
-            statuses[rail.name] = "Already correct"; log("\(rail.name): already correct.")
+            statuses[rail.name] = partial ? "Correct (partial)" : "Already correct"; log("\(rail.name): matched titles already correct\(partial ? "; unresolved titles reported" : "").")
             _ = try await call("clearSearch"); try await returnToOverview(); return
         }
         guard Set(targets.map(normalized)).count == targets.count else { throw AppFailure("Two workbook titles resolve to the same catalog title on \(rail.name).") }
         statuses[rail.name] = "Updating"; table.reloadData()
-        for title in additions {
-            let search: [String: Any]
-            do { search = try await call("search", ["title": title]) }
-            catch { try checkCancelled(); try await unresolvedTitle(rail, title: title, detail: error.localizedDescription); return }
-            guard (search["matches"] as? [[String: Any]])?.count == 1 else { try await unresolvedTitle(rail, title: title, detail: "catalog result changed"); return }
-            do { _ = try await call("choose", ["title": title]) }
-            catch { try checkCancelled(); try await unresolvedTitle(rail, title: title, detail: error.localizedDescription); return }
-            log("\(rail.name): added \(title).")
-        }
         _ = try await call("clearSearch")
         for (index, title) in targets.enumerated() { _ = try await call("moveTitle", ["title": title, "position": index]) }
         let validation = ["before": before, "targets": targets, "additions": additions]
         let checked = try await call("titleCheck", validation)
         guard checked["ok"] as? Bool == true else { throw AppFailure("\(rail.name): \(checked["detail"] as? String ?? "Title validation failed"). No carousel was saved.") }
+        if (checked["pins"] as? [String] ?? []).count < 5 {
+            statuses[rail.name] = "Too few titles"; log("\(rail.name): fewer than five total titles; carousel not saved.")
+            try await returnToOverview(); return
+        }
+        if testOnly {
+            verifiedDrafts += 1; statuses[rail.name] = partial ? "Draft verified (partial)" : "Draft verified"
+            log("TEST VERIFIED \(rail.name): target order, complete inventory, and remaining-title order; no save submitted.")
+            try await returnToOverview(); return
+        }
         _ = try await call("publishCarousel")
         _ = try await waitForState("dialog")
         _ = try await call("schedule", ["position": rail.position])
@@ -507,15 +565,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         try await openEditor(rail)
         let saved = try await call("titleCheck", validation)
         guard saved["ok"] as? Bool == true else { throw AppFailure("Saved titles did not verify on \(rail.name): \(saved["detail"] as? String ?? "Title validation failed"). Check the carousel in Slate.") }
-        completedRails += 1; statuses[rail.name] = "Saved"
-        log("\(rail.name): saved and verified (Column A position \(rail.position)).")
+        completedRails += 1; statuses[rail.name] = partial ? "Saved (partial)" : "Saved"
+        log("\(rail.name): saved and verified \(targets.count)/\(rail.titles.count) matched titles (Column A position \(rail.position)); all existing titles preserved.")
         try await returnToOverview()
     }
     func unresolvedTitle(_ rail: Rail, title: String, detail: String) async throws {
-        let message = "\(rail.name): unresolved title \(title) (\(detail)); carousel not saved. Continuing with remaining carousels."
-        unresolved.append(message); statuses[rail.name] = "Unresolved"; log(message)
+        let message = "\(rail.name): skipped title \(title) (\(detail)); continuing with other titles in this carousel."
+        unresolved.append(message); log(message)
         _ = try? await call("clearSearch")
-        try checkCancelled(); try await returnToOverview()
+        try checkCancelled()
     }
     func preservesExtras(before: [String], after: [String], targets: [String]) -> Bool {
         var counts: [String: Int] = [:]
@@ -556,17 +614,18 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
             do {
                 let current = try await call("order")["order"] as? [String] ?? []
                 guard Array(current.prefix(target.count)).map(normalized) == target.map(normalized) else { throw AppFailure("The order changed since verification. Run the update again before publishing.") }
+                stagedOrder = nil
+                statusLabel.stringValue = "Publishing • waiting for Slate confirmation…"
                 _ = try await call("publishStorefront")
-                statusLabel.stringValue = "Publishing • checking saved order…"
-                try await pause(8000)
-                webView.reload()
-                try await pause(1200)
-                let fresh = try await waitForState("overview", timeout: 30)
-                let saved = fresh["order"] as? [String] ?? []
-                guard Array(saved.prefix(target.count)).map(normalized) == target.map(normalized) else {
-                    stagedOrder = nil
-                    throw AppFailure("Slate did not retain the requested order after publishing and reloading. Content saves remain applied. The app has stopped; it will not repeatedly publish.")
+                var verified = false
+                var lastDetail = "Saved order was not verified."
+                for attempt in 0..<3 {
+                    if attempt > 0 { try await pause(3000) }
+                    try await freshOverview()
+                    do { _ = try await call("verifySavedOrder", ["expected": current]); verified = true; break }
+                    catch { try checkCancelled(); lastDetail = error.localizedDescription; log("Publish verification observation \(attempt + 1): \(lastDetail)") }
                 }
+                guard verified else { throw AppFailure("\(lastDetail). Content saves remain applied. No second publish was submitted.") }
                 stagedOrder = nil; statusLabel.stringValue = "Published • saved order verified"
                 log("Published successfully. Verified storefront order after reload.")
             } catch { log(error.localizedDescription); statusLabel.stringValue = "Publish not verified"; showError(error) }
@@ -582,7 +641,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         }
     }
     func report() -> String {
-        "Amazon Carousel Updater V\(version)\nWorkbook: \(workbookName)\nSheet: \(selectedSheet?.name ?? "")\nSaved carousels: \(completedRails)\nStatus: \(statusLabel.stringValue)\n\n" + logs.joined(separator: "\n") + "\n"
+        "Amazon Carousel Updater V\(version)\nWorkbook: \(workbookName)\nSheet: \(selectedSheet?.name ?? "")\nSaved carousels: \(completedRails)\nVerified unsaved drafts: \(verifiedDrafts)\nStatus: \(statusLabel.stringValue)\n\n" + logs.joined(separator: "\n") + "\n"
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

@@ -1,21 +1,21 @@
-# Amazon Carousel Updater V1.7
+# Amazon Carousel Updater V1.8
 
 Standalone desktop app for updating Amazon Slate from a weekly `.xlsx` workbook. Available for macOS, Windows, and Linux Mint. Every distribution includes its own Slate browser and runs without separately installing Codex, Python, Node.js, or an AI subscription/API key.
 
-[Download V1.7](https://github.com/MichaelBrandonFalk/Amazon-Carousel-Updater/releases/tag/v1.7) · [Public GitHub Pages download page](https://michaelbrandonfalk.github.io/Amazon-Carousel-Updater/) · [Separate Codex skill](https://github.com/MichaelBrandonFalk/Amazon-Rails-Update-Via-Spreadsheet)
+[Download V1.8](https://github.com/MichaelBrandonFalk/Amazon-Carousel-Updater/releases/tag/v1.8) · [Public GitHub Pages download page](https://michaelbrandonfalk.github.io/Amazon-Carousel-Updater/) · [Separate Codex skill](https://github.com/MichaelBrandonFalk/Amazon-Rails-Update-Via-Spreadsheet)
 
 ## Platform Downloads
 
 | Platform | File | Installation |
 | --- | --- | --- |
-| macOS 12+, Intel and Apple Silicon | `Amazon-Carousel-Updater-V1.7-macOS-universal.zip` | Unzip and move the app to Applications. |
-| Windows 10/11 x64 | `Amazon-Carousel-Updater-V1.7-Windows-x64-Setup.exe` | Run the installer; launch from the Start menu. No administrator install required. |
-| Linux Mint 21.x/22.x, Intel/AMD 64-bit | `Amazon-Carousel-Updater-V1.7-Linux-amd64.deb` | Open with Package Installer, then launch from the Mint menu. |
+| macOS 12+, Intel and Apple Silicon | `Amazon-Carousel-Updater-V1.8-macOS-universal.zip` | Unzip and move the app to Applications. |
+| Windows 10/11 x64 | `Amazon-Carousel-Updater-V1.8-Windows-x64-Setup.exe` | Run the installer; launch from the Start menu. No administrator install required. |
+| Linux Mint 21.x/22.x, Intel/AMD 64-bit | `Amazon-Carousel-Updater-V1.8-Linux-amd64.deb` | Open with Package Installer, then launch from the Mint menu. |
 
 Linux terminal installation from the download directory:
 
 ```bash
-sudo apt install ./Amazon-Carousel-Updater-V1.7-Linux-amd64.deb
+sudo apt install ./Amazon-Carousel-Updater-V1.8-Linux-amd64.deb
 amazon-carousel-updater
 ```
 
@@ -39,8 +39,8 @@ Review the source and use your organization's approved installation process. Old
 - Full Update edits the first six leading titles in eligible Title pinnings or Title collection lists.
 - Add missing exact catalog matches and reorder existing titles. Preserve every existing title, including duplicate entries and their relative order outside the leading targets.
 - Title inclusions and Title exclusions are never edited. Dynamic/Leaving Soon rows skip content edits.
-- A missing or ambiguous catalog match leaves that carousel unchanged and appears in the report.
-- Catalog lookup and selection errors are reported without stopping later carousels. The affected carousel is not saved; no guessed titles are added. Check the run log or export the report for the unresolved titles.
+- Missing or ambiguous titles are skipped individually and reported. Matched titles lead the carousel in workbook order, with no gaps; all other existing titles remain after them.
+- Catalog lookup failures and unchanged failed additions skip that title and continue within the same carousel. Uncertain inventory changes still block saving. A carousel with no matched titles is left unchanged; no guessed titles are added. Partial saves are identified in the report.
 - Broad series names reuse the first matching existing season on that rail. The app records the resolved title in its report. It does not guess new seasons from search results.
 - Scheduling uses the workbook Position value. The final storefront order separately reserves slot 1 for Top 10.
 - Publish is verified after a reload. A success toast followed by a different saved order is a failure, not a completed update.
@@ -59,7 +59,7 @@ Passwords are entered directly on Amazon's page; the app never records passwords
 
 ## Verification Status
 
-All distributions remain preview builds. Tests cover visible worksheet selection, query/collection lists, search/add, native browser keyboard input, nested drag handles, asynchronous drag/drop, lost-focus protection against Remove, link/input Publish controls, post-save editor navigation, retry from an editor, preservation, Column A positions, missing-title continuation, order-only mode, and publish/reload verification. The synthetic drag fixture rejects JavaScript-created keyboard events; it does not reproduce every possible production Slate behavior. CI builds and runs Windows, installs/tests the Linux `.deb` on Ubuntu 22.04/24.04 (the Mint 21/22 bases), and tests the native Mac app. A supervised real storefront run is still needed on each platform; no live save is performed as part of regression testing.
+All distributions remain preview builds. Tests cover visible worksheet selection, query/collection lists, search/add, native browser keyboard input, nested drag handles, asynchronous drag/drop, lost-focus protection against Remove, link/input Publish controls, post-save editor navigation, retry from an editor, preservation, Column A positions, missing-title continuation, order-only mode, and publish/reload verification. The synthetic drag fixture rejects JavaScript-created keyboard events; it does not reproduce every possible production Slate behavior. CI builds and runs Windows, installs/tests the Linux `.deb` on Ubuntu 22.04/24.04 (the Mint 21/22 bases), and tests the native Mac app. V1.8 was also tested locally on Mac with an operator-provided workbook: live partial content saves were reopened and verified, and the final storefront publication was verified after a fresh reload. Windows/Linux have synthetic packaged-app tests; production Slate validation on those platforms remains outstanding. Automated regression tests never submit live saves.
 
 ## Build And Test
 
@@ -85,13 +85,21 @@ Package on the matching operating system. Runtime dependencies are locked and pr
 
 ## Release Every Edit
 
-The app has its own version line, separate from the skill's v2.x versions. V1.7 is current; the next shipped edit is V1.8, then V1.9, etc. V1.2 was an unpublished validation tag. V1.7 reads rendered title names without availability notices or hidden decorations, and reports the first differing row for a failed move. The public download site must use GitHub Pages, never ChatGPT Sites. The supplied artwork in `Resources/app-logo.png` is shared by all platforms, the site, and browser favicon; `bash scripts/build_icons.sh` regenerates Mac/site icon sizes. Electron packaging converts the same original artwork for Windows/Linux.
+The app has its own version line, separate from the skill's v2.x versions. V1.8 is current; the next shipped edit is V1.9. V1.2 was an unpublished validation tag. V1.8 reads ordinal and title text separately, waits for the requested editor identity, and reloads Overview before each run to discard previous unsaved state. The public download site must use GitHub Pages, never ChatGPT Sites. The supplied artwork in `Resources/app-logo.png` is shared by all platforms, the site, and browser favicon; `bash scripts/build_icons.sh` regenerates Mac/site icon sizes. Electron packaging converts the same original artwork for Windows/Linux.
 
-1. Run `python3 scripts/new_version.py 1.8` before the next release and update `release_notes.md` and the site's static download links.
+1. Run `python3 scripts/new_version.py 1.9` before the next release and update `release_notes.md` and the site's static download links.
 2. Build and test, commit the exact source, and push.
-3. Use the release workflow's manual dispatch to validate all platforms before tagging. Then tag that exact commit `v1.6` and push the tag.
+3. Use the release workflow's manual dispatch to validate all platforms before tagging. Then tag that exact commit `v1.8` and push the tag.
 4. GitHub Actions builds/tests all three platforms, creates a release with all installers plus SHA256 checksums, and only then deploys the matching GitHub Pages download site. A failing platform blocks publication. Old releases are retained.
 
 The download page reads per-platform release history from the public GitHub releases API and retains direct release links if that API is unavailable. `website/dist` is deployed to GitHub Pages by the release workflow (or a manual Pages dispatch), not immediately on every source push. A skill change is not automatically ported into the app; port and test applicable changes before shipping a new app version.
 
 Independent utility; not affiliated with or endorsed by Amazon.
+
+## Test Before Updating
+
+On Mac, choose **File → Test Workbook Without Saving** after loading a workbook. This exercises catalog searches, additions and title ordering against the signed-in Slate page, but blocks all app save/publish commands. The final page reload discards the unsaved draft. The report separates verified unsaved drafts from actual saves and lists unresolved titles and failures. This test does not verify production scheduling or persistence; those require an operator-authorized live update.
+
+Each run starts from a fresh Overview page and fresh per-run logs. Remembered authentication remains local and is retained. Starting a run discards any previous unsaved Slate draft.
+
+Publishing waits for a new Slate reorder-success message before reloading. The complete order, including extra rails, is verified on up to three fresh read-only page loads. A missing acknowledgement or persisted mismatch is reported with no second publish submission.

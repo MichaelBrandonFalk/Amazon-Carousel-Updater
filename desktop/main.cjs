@@ -30,7 +30,7 @@ function assertSlate() {
   const target = new URL(storefront), prefix = target.pathname.replace(/storefront\/overview$/, '');
   if (url.origin !== 'https://slate.amazon.com' || !url.pathname.startsWith(prefix)) throw Error('Sign in, then open the selected Slate storefront before running.');
 }
-const commands = new Set(['state', 'order', 'pins', 'titleCheck', 'endTitleMove', 'resume', 'cancel', 'open', 'overview', 'moveRail', 'search', 'choose', 'clearSearch', 'publishCarousel', 'schedule', 'publishStorefront', 'prepareTitleMove', 'titleDragState', 'titleKeyTarget', 'waitTitleStep', 'verifyTitleMove']);
+const commands = new Set(['state', 'waitEditor', 'verifySavedOrder', 'order', 'pins', 'titleCheck', 'endTitleMove', 'resume', 'cancel', 'open', 'overview', 'moveRail', 'search', 'choose', 'clearSearch', 'publishCarousel', 'schedule', 'publishStorefront', 'prepareTitleMove', 'titleDragState', 'titleKeyTarget', 'waitTitleStep', 'verifyTitleMove']);
 async function sendTitleKey(key, cancelling = false) {
   assertSlate();
   if (!cancelling) engine.check();
@@ -58,6 +58,7 @@ async function moveTitle(input) {
 }
 const adapter = {
   publishDelay: selfTest ? 100 : 8000,
+  async freshOverview() { await guest.webContents.loadURL(selfTest ? fixtureURL : storefront); },
   async call(command, input = {}) {
     assertSlate();
     if (command === 'moveTitle') return moveTitle(input);
