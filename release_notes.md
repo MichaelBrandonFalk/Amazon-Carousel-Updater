@@ -7,6 +7,7 @@
 - Continue past missing/ambiguous titles and catalog lookup/selection failures. Report the affected title/carousel without saving it; continue with remaining safe carousels.
 - Add opt-in Remember sign-in and Forget sign-in. Amazon sessions stay in local browser storage only; passwords are never recorded. Enabling it restarts the browser, so sign in once after enabling. Amazon can still request MFA or reauthentication.
 - Update Electron within the existing major version and patch the workbook XML dependency.
+- Move Mac CI to the supported macOS 15 runner; the distributed native app still targets macOS 12 and newer.
 - Expand regression tests to reject untrusted keys, use nested handles and delayed drag/drop, divert focus toward Remove, exercise Publish markup variants and saved-editor landings, and continue updates after an unresolved rail.
 
 Validation: synthetic workbook and embedded-browser tests on all supported build targets. These changes address the supplied error reports; production Slate still requires an operator-supervised retry. No real account credentials or private weekly sheets are part of this release.
