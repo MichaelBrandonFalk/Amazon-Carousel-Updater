@@ -2,6 +2,7 @@
 
 - Prefer drag-handle attributes on the row itself before checking nested handles. Never fall back to an arbitrary nested button, which might be Remove.
 - Add native Mac and Electron regression coverage for a draggable row containing a focusable Remove control, in addition to lost-focus protection.
+- Validate the universal Mac package on the supported Intel Mac runner; Apple Silicon is also tested locally.
 - Includes V1.4's reliable browser input, Publish/Overview navigation fixes, non-blocking unresolved-title reporting, and opt-in local remembered sign-in.
 
 Validation: synthetic browser tests exercise both row and nested-handle layouts without any Remove activation. No live Slate saves are performed by the tests; the operator should retry using V1.5 rather than V1.4.
