@@ -15,13 +15,13 @@
 'use strict';
 const data=JSON.parse(document.getElementById('report-data').textContent),entries=data.entries||[],skips=entries.filter(e=>e.kind==='not_added'),issues=entries.filter(e=>e.kind==='issue'),seasons=entries.filter(e=>e.kind==='season1');
 const put=(id,value)=>{document.getElementById(id).textContent=value};
-put('context',[data.workbook,data.sheet,'V'+data.version].filter(Boolean).join(' · '));put('run-status',data.status||'');
+put('context',[data.workbook,data.sheet,data.scope,'V'+data.version].filter(Boolean).join(' · '));put('run-status',data.status||'');
 put('skip-count',skips.length);put('issue-count',issues.length);put('save-count',data.saved||0);put('season-count',seasons.length);put('log',(data.logs||[]).join('\n'));
 function table(id,headers,rows,empty){const host=document.getElementById(id);if(!rows.length){host.textContent=empty;return}const table=document.createElement('table'),head=document.createElement('thead'),tr=document.createElement('tr');headers.forEach(h=>{const cell=document.createElement('th');cell.textContent=h;tr.append(cell)});head.append(tr);table.append(head);const body=document.createElement('tbody');for(const values of rows){const row=document.createElement('tr');values.forEach((v,i)=>{const cell=document.createElement('td');cell.textContent=String(v??'');if(i===2)cell.className='title';row.append(cell)});body.append(row)}table.append(body);host.append(table)}
 const outcome=e=>(data.statuses||{})[e.carousel]||'Not completed';
 const skipRows=skips.map(e=>[e.position,e.carousel,e.title,e.reason,outcome(e)]);
 table('skips',['Sheet position','Carousel','Title not added','Why it was skipped','Carousel result'],skipRows,'No titles were skipped.');
-table('issues',['Carousel','Issue'],issues.map(e=>[e.carousel||'Run',e.reason]),'No other issues were reported.');
+table('issues',['Sheet position','Carousel','Title / step','Issue','Outcome'],issues.map(e=>[e.position,e.carousel||'Run',e.title||'(carousel)',e.reason,outcome(e)]),'No other issues were reported.');
 table('seasons',['Sheet position','Carousel','Requested title','Selected catalog title','Carousel result'],seasons.map(e=>[e.position,e.carousel,e.title,e.resolved,outcome(e)]),'No Season 1 fallback was used.');
 table('results',['Sheet position','Carousel','Result'],(data.rails||[]).map(r=>[r.position,r.name,(data.statuses||{})[r.name]||'Not processed']),'No carousel results.');
 document.getElementById('csv').disabled=!skips.length;

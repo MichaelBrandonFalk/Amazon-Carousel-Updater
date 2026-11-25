@@ -6,6 +6,7 @@ const { randomUUID } = require('node:crypto');
 const { readWorkbook } = require('./workbook.cjs');
 const { Engine, skipContent } = require('./engine.cjs');
 const { renderReport } = require('./report.cjs');
+const { selectRails } = require('./scope.cjs');
 const root = path.join(__dirname, '..');
 const defaultStorefront = 'https://slate.amazon.com/merchandising/ui/amzn1.dv.channel.8356bff5-1b7d-403a-a116-5ae64b5cfe14.US/storefront/overview';
 const selfTest = process.argv.includes('--self-test');
@@ -13,6 +14,7 @@ const fixtureURL = pathToFileURL(path.join(root, 'Resources/slate_fixture.html')
 const uiURL = 'carousel://ui/index.html';
 let win, guest, engine, driver, version, sheets = [], selected = 0, workbookName = '', storefront = defaultStorefront;
 let rememberSignIn = false;
+let scope = { mode: 'all', positions: '', name: '' }, moveSelected = false;
 protocol.registerSchemesAsPrivileged([{ scheme: 'carousel', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
 function validStorefront(value) {
@@ -31,7 +33,7 @@ function assertSlate() {
   const target = new URL(storefront), prefix = target.pathname.replace(/storefront\/overview$/, '');
   if (url.origin !== 'https://slate.amazon.com' || !url.pathname.startsWith(prefix)) throw Error('Sign in, then open the selected Slate storefront before running.');
 }
-const commands = new Set(['state', 'waitEditor', 'verifySavedOrder', 'order', 'pins', 'titleCheck', 'endTitleMove', 'resume', 'cancel', 'open', 'overview', 'moveRail', 'search', 'choose', 'clearSearch', 'publishCarousel', 'schedule', 'publishStorefront', 'prepareTitleMove', 'titleDragState', 'titleKeyTarget', 'waitTitleStep', 'verifyTitleMove']);
+const commands = new Set(['state', 'waitEditor', 'overviewSnapshot', 'verifySavedOrder', 'order', 'pins', 'titleCheck', 'endTitleMove', 'resume', 'cancel', 'open', 'overview', 'moveRail', 'search', 'choose', 'clearSearch', 'publishCarousel', 'schedule', 'publishStorefront', 'prepareTitleMove', 'titleDragState', 'titleKeyTarget', 'waitTitleStep', 'verifyTitleMove']);
 async function sendTitleKey(key, cancelling = false) {
   assertSlate();
   if (!cancelling) engine.check();
@@ -78,7 +80,7 @@ const adapter = {
   }
 };
 function state() {
-  return { version, sheets, selected, workbookName, storefront, rememberSignIn, busy: engine.busy, staged: !!engine.staged, statuses: engine.statuses, logs: engine.logs, progress: engine.progress, status: engine.status, page: guest.webContents.getURL() };
+  return { version, sheets, selected, workbookName, storefront, rememberSignIn, scope, moveSelected, busy: engine.busy, staged: !!engine.staged, statuses: engine.statuses, logs: engine.logs, progress: engine.progress, status: engine.status, page: guest.webContents.getURL() };
 }
 async function savePreferences() {
   await fs.mkdir(app.getPath('userData'), { recursive: true });
@@ -127,6 +129,7 @@ async function loadWorkbook() {
   const result = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: 'Excel workbook', extensions: ['xlsx'] }] });
   if (result.canceled) return;
   const parsed = await readWorkbook(result.filePaths[0]);
+  scope = { mode: 'all', positions: '', name: '' }; moveSelected = false;
   sheets = parsed; selected = 0; workbookName = path.basename(result.filePaths[0]); engine.reset();
   engine.status = `${sheets[0].rails.length} rails - Top 10 stays first`; engine.log(`Loaded ${workbookName}. Workbook cells are used only as data.`);
 }
@@ -140,10 +143,14 @@ async function action(event, command, input) {
   if (command === 'stop') { if (engine.busy) await engine.stop(); return state(); }
   if (engine.busy) throw Error('Wait for the current operation or click Stop.');
   switch (command) {
+    case 'scope':
+      if (!input || !['all', 'positions', 'one'].includes(input.mode) || typeof input.positions !== 'string' || input.positions.length > 500 || typeof input.name !== 'string' || input.name.length > 500 || typeof input.moveSelected !== 'boolean') throw Error('Choose a valid update scope.');
+      scope = { mode: input.mode, positions: input.positions, name: input.name }; moveSelected = input.moveSelected;
+      engine.reset(); break;
     case 'workbook': await loadWorkbook(); break;
     case 'sheet':
       if (!Number.isInteger(input) || !sheets[input]) throw Error('Select a valid worksheet.');
-      selected = input; engine.reset(); engine.status = `${sheets[selected].rails.length} rails - Top 10 stays first`; break;
+      selected = input; scope = { mode: 'all', positions: '', name: '' }; moveSelected = false; engine.reset(); engine.status = `${sheets[selected].rails.length} rails - Top 10 stays first`; break;
     case 'open': await guest.webContents.loadURL(storefront); break;
     case 'back': if (guest.webContents.navigationHistory.canGoBack()) guest.webContents.navigationHistory.goBack(); break;
     case 'reload': engine.staged = null; guest.webContents.reload(); break;
@@ -161,8 +168,9 @@ async function action(event, command, input) {
       if (!sheets[selected]) throw Error('Choose a workbook first.');
       if (!['full', 'order'].includes(input)) throw Error('Select a valid update mode.');
       const sheet = sheets[selected];
-      if (input === 'full' && !await confirm('Save carousel content to Amazon?', `Update ${sheet.rails.filter(r => !skipContent(r)).length} eligible lists from ${sheet.name}. Each carousel Schedule action saves immediately. Existing titles are preserved. The final storefront order has a separate Publish Order confirmation.\n\n${storefront}`, 'Run Full Update')) break;
-      await engine.run(sheet, input === 'full'); break;
+      const chosen = selectRails(sheet.rails, scope);
+      if (input === 'full' && !await confirm('Save carousel content to Amazon?', `Update ${chosen.filter(r => !skipContent(r)).length} selected lists from ${sheet.name}. Each Schedule saves immediately. Existing titles are preserved. ${scope.mode !== 'all' && !moveSelected ? 'Current carousel positions are kept; no order draft will be staged.' : 'Final order changes have a separate Publish Order confirmation.'}\n\n${storefront}`, 'Run Full Update')) break;
+      await engine.run(sheet, input === 'full', { scope, moveSelected }); break;
     }
     case 'publish': {
       if (!engine.staged) throw Error('No verified draft to publish.');
@@ -172,7 +180,7 @@ async function action(event, command, input) {
     }
     case 'export': {
       const result = await dialog.showSaveDialog(win, { defaultPath: 'carousel-run-report.html', filters: [{ name: 'Readable report (open in a browser)', extensions: ['html'] }] });
-      if (!result.canceled && result.filePath) await fs.writeFile(result.filePath, renderReport({ version, workbook: workbookName, sheet: sheets[selected]?.name || '', rails: sheets[selected]?.rails || [], saved: engine.completed, status: engine.status, statuses: engine.statuses, entries: engine.entries, logs: engine.logs }));
+      if (!result.canceled && result.filePath) await fs.writeFile(result.filePath, renderReport({ version, workbook: workbookName, sheet: sheets[selected]?.name || '', scope: engine.runScope, rails: sheets[selected]?.rails || [], saved: engine.completed, status: engine.status, statuses: engine.statuses, entries: engine.entries, logs: engine.logs }));
       break;
     }
     default: throw Error('Unknown app operation.');

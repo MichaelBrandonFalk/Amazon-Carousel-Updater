@@ -13,6 +13,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
     var fileLabel = NSTextField(wrappingLabelWithString: "No workbook selected")
     var sheetPopup = NSPopUpButton()
     var mode = NSSegmentedControl(labels: ["Full Update", "Order Only"], trackingMode: .selectOne, target: nil, action: nil)
+    var scopePopup = NSPopUpButton()
+    var scopePositions = NSTextField(string: "")
+    var scopeCarousel = NSPopUpButton()
+    var moveSelected = NSButton(checkboxWithTitle: "Use sheet positions for selected carousels", target: nil, action: nil)
+    var scopeHint = NSTextField(wrappingLabelWithString: "")
+    var preservePositions = false
+    var runScope = "All carousels"
     var startButton = NSButton()
     var stopButton = NSButton()
     var publishButton = NSButton()
@@ -33,6 +40,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
     var logs: [String] = []
     var reportEntries: [[String: Any]] = []
     var activeCarousel = ""
+    var contentPhase = ""
+    var activeTitle = ""
     var busy = false
     var cancelled = false
     var stagedOrder: [String]?
@@ -120,7 +129,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         window.center()
         let root = NSView(); window.contentView = root
         let sidebar = NSStackView()
-        sidebar.orientation = .vertical; sidebar.alignment = .leading; sidebar.spacing = 12
+        sidebar.orientation = .vertical; sidebar.alignment = .leading; sidebar.spacing = 9
         sidebar.edgeInsets = NSEdgeInsets(top: 18, left: 18, bottom: 18, right: 18)
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(sidebar)
@@ -145,8 +154,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         sheetPopup.target = self; sheetPopup.action = #selector(sheetChanged)
         sheetPopup.addItem(withTitle: "No worksheet"); sheetPopup.isEnabled = false
         sidebar.addArrangedSubview(sheetPopup)
-        mode.selectedSegment = 0; sidebar.addArrangedSubview(mode)
-        let timing = NSTextField(wrappingLabelWithString: "Full Update saves each carousel immediately. Publish Order applies the final storefront order.")
+        mode.selectedSegment = 0; mode.target = self; mode.action = #selector(scopeChanged); sidebar.addArrangedSubview(mode)
+        scopePopup.addItems(withTitles: ["All carousels", "Column A positions", "One carousel"])
+        scopePopup.target = self; scopePopup.action = #selector(scopeChanged)
+        scopePositions.placeholderString = "5-10 or 5,7,10"; scopePositions.setAccessibilityLabel("Column A positions")
+        scopeCarousel.setAccessibilityLabel("Choose one carousel")
+        moveSelected.target = self; moveSelected.action = #selector(scopeChanged); moveSelected.font = .systemFont(ofSize: 11)
+        let scopeBox = NSStackView(views: [scopePopup, scopePositions, scopeCarousel, moveSelected]); scopeBox.orientation = .vertical; scopeBox.alignment = .leading; scopeBox.spacing = 5; scopeBox.detachesHiddenViews = true
+        sidebar.addArrangedSubview(scopeBox)
+        let timing = scopeHint
         timing.font = .systemFont(ofSize: 11); timing.textColor = .secondaryLabelColor
         sidebar.addArrangedSubview(timing)
         table.headerView = NSTableHeaderView()
@@ -157,8 +173,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         let tableScroll = NSScrollView(); tableScroll.documentView = table; tableScroll.hasVerticalScroller = true; tableScroll.borderType = .bezelBorder
         sidebar.addArrangedSubview(tableScroll)
-        tableScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 210).isActive = true
-        tableScroll.heightAnchor.constraint(equalToConstant: 290).isActive = true
+        tableScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 170).isActive = true
+        let tableHeight = tableScroll.heightAnchor.constraint(equalToConstant: 240); tableHeight.priority = .defaultHigh; tableHeight.isActive = true
         let actions = NSStackView(); actions.spacing = 8
         startButton = makeButton("Run Update", symbol: "play.fill", action: #selector(startUpdate))
         stopButton = makeButton("Stop", symbol: "stop.fill", action: #selector(stopUpdate)); stopButton.isEnabled = false
@@ -198,7 +214,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
             toolbar.leadingAnchor.constraint(equalTo: browserPanel.leadingAnchor, constant: 12), toolbar.trailingAnchor.constraint(equalTo: browserPanel.trailingAnchor, constant: -12), toolbar.topAnchor.constraint(equalTo: browserPanel.topAnchor, constant: 12), toolbar.heightAnchor.constraint(equalToConstant: 32),
             webView.leadingAnchor.constraint(equalTo: browserPanel.leadingAnchor), webView.trailingAnchor.constraint(equalTo: browserPanel.trailingAnchor), webView.topAnchor.constraint(equalTo: toolbar.bottomAnchor, constant: 12), webView.bottomAnchor.constraint(equalTo: browserPanel.bottomAnchor)
         ])
-        for item in [fileLabel, sheetPopup, mode, timing, tableScroll, progress, statusLabel, logScroll] { item.widthAnchor.constraint(equalTo: sidebar.widthAnchor, constant: -36).isActive = true }
+        for item in [fileLabel, sheetPopup, mode, scopeBox, timing, tableScroll, progress, statusLabel, logScroll] { item.widthAnchor.constraint(equalTo: sidebar.widthAnchor, constant: -36).isActive = true }
+        for item in [scopePopup, scopePositions, scopeCarousel] { item.widthAnchor.constraint(equalTo: scopeBox.widthAnchor).isActive = true }
         window.makeKeyAndOrderFront(nil)
         updateControls()
     }
@@ -259,11 +276,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         case "name": label.stringValue = rail.name
         default:
             label.stringValue = statuses[rail.name] ?? (rail.skipContent ? "Order only" : "\(rail.titles.count) titles")
-            if label.stringValue == "Saved" { label.textColor = .systemGreen }
-            if label.stringValue.contains("Unresolved") { label.textColor = .systemRed }
+            if label.stringValue.hasPrefix("Saved") || label.stringValue.hasPrefix("Already correct") { label.textColor = .systemGreen }
+            if label.stringValue.hasPrefix("Not saved") || label.stringValue.hasPrefix("Skipped:") || label.stringValue == "Save not verified" { label.textColor = .systemRed }
         }
         label.lineBreakMode = .byTruncatingTail
         label.toolTip = rail.titles.joined(separator: "\n")
+        if let reason = reportEntries.last(where: { $0["carousel"] as? String == rail.name && $0["kind"] as? String == "issue" })?["reason"] as? String { label.toolTip = reason + "\n\n" + (label.toolTip ?? "") }
         return label
     }
 
@@ -286,6 +304,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
     @objc func sheetChanged() {
         statuses = [:]; stagedOrder = nil; completedRails = 0; verifiedDrafts = 0; unresolved = []
         reportEntries = []; activeCarousel = ""
+        scopePopup.selectItem(at: 0); scopePositions.stringValue = ""; moveSelected.state = .off
+        scopeCarousel.removeAllItems(); scopeCarousel.addItems(withTitles: selectedSheet?.rails.map(\.name) ?? [])
         table.reloadData(); statusLabel.stringValue = "\(selectedSheet?.rails.count ?? 0) rails • Top 10 stays first"
         updateControls()
     }
@@ -311,6 +331,19 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         openButton.isEnabled = !busy; settingsButton.isEnabled = !busy
         rememberButton.isEnabled = !busy && !selfTest
         publishButton.isEnabled = !busy && stagedOrder != nil
+        scopePopup.isEnabled = !busy; scopePositions.isEnabled = !busy; scopeCarousel.isEnabled = !busy
+        scopePositions.isHidden = scopePopup.indexOfSelectedItem != 1
+        scopeCarousel.isHidden = scopePopup.indexOfSelectedItem != 2
+        moveSelected.isHidden = scopePopup.indexOfSelectedItem == 0
+        moveSelected.isEnabled = !busy && mode.selectedSegment == 0
+        scopeHint.stringValue = scopePopup.indexOfSelectedItem == 0 ? "Content saves apply immediately. Publish Order applies the final storefront order." : (mode.selectedSegment == 1 ? "Only selected carousels move; unselected titles are untouched." : (moveSelected.state == .on ? "Selected contents update; Schedule uses Column A positions." : "Only selected titles change. Current storefront order is kept."))
+    }
+    @objc func scopeChanged() { stagedOrder = nil; updateControls() }
+    func selectedScopeRails(_ rails: [Rail]) throws -> [Rail] {
+        if scopePopup.indexOfSelectedItem == 0 { return rails }
+        if scopePopup.indexOfSelectedItem == 1 { return try railsForPositions(scopePositions.stringValue, rails: rails) }
+        guard let name = scopeCarousel.titleOfSelectedItem, let rail = rails.first(where: { $0.name == name }) else { throw AppFailure("Choose one carousel from the worksheet.") }
+        return [rail]
     }
     func log(_ message: String) {
         logs.append(message)
@@ -418,17 +451,23 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
     @objc func testWorkbook() { beginUpdate(testOnly: true) }
     func beginUpdate(testOnly: Bool) {
         guard !busy, let sheet = selectedSheet else { return }
+        let selected: [Rail]
+        do { selected = try selectedScopeRails(sheet.rails) } catch { showError(error); return }
+        let targeted = scopePopup.indexOfSelectedItem != 0
         self.testOnly = testOnly
         let full = testOnly || mode.selectedSegment == 0
-        if full && !testOnly {
+        preservePositions = targeted && full && moveSelected.state != .on
+        runScope = targeted ? (scopePopup.indexOfSelectedItem == 1 ? "Column A: \(scopePositions.stringValue)" : "Carousel: \(selected.first?.name ?? "")") : "All carousels"
+        if full && !testOnly && !selfTest {
             let alert = NSAlert(); alert.messageText = "Save carousel content to Amazon?"
-            alert.informativeText = "Update \(sheet.rails.filter { !$0.skipContent }.count) eligible carousel lists from \(sheet.name). Missing titles will be added and existing titles preserved. Each carousel's Schedule action saves immediately to this storefront. The final carousel order has a separate Publish Order step."
+            alert.informativeText = "Scope: \(runScope). Update \(selected.filter { !$0.skipContent }.count) eligible carousel lists from \(sheet.name). Existing titles are preserved. Each Schedule saves immediately. \(preservePositions ? "Current carousel positions will be kept; no storefront order draft will be staged." : "Final order changes have a separate Publish Order step.")"
             alert.addButton(withTitle: "Run Full Update"); alert.addButton(withTitle: "Cancel")
             guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
         busy = true; cancelled = false; stagedOrder = nil; completedRails = 0; verifiedDrafts = 0; unresolved = []; statuses = [:]
         logs = []; log("NEW RUN: \(testOnly ? "no-save test" : (full ? "full update" : "order only")) • \(workbookName)"); updateControls()
         reportEntries = []; activeCarousel = ""
+        for rail in sheet.rails where !selected.contains(where: { $0.position == rail.position }) { statuses[rail.name] = "Not selected" }
         currentTask = Task {
             do {
                 _ = try await call("resume")
@@ -436,45 +475,47 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
                 log(testOnly ? "TEST: fresh page loaded; all save and publish commands are blocked." : "Fresh Overview loaded; previous unsaved page state discarded.")
                 let initial = try await waitForState("overview", timeout: 10)
                 let initialOrder = initial["order"] as? [String] ?? []
-                try verifyTargetNames(sheet.rails, existing: initialOrder)
+                let available = try availableRails(selected, existing: (try await call("overviewSnapshot", ["names": [reservedRail] + selected.map(\.name)]))["order"] as? [String] ?? initialOrder)
                 // Save content first: carousel scheduling may otherwise discard an Overview order draft.
                 if full {
-                    for (index, rail) in sheet.rails.enumerated() {
+                    for (index, rail) in selected.enumerated() {
                         try checkCancelled()
-                        statusLabel.stringValue = "\(index + 1)/\(sheet.rails.count): \(rail.name)"
+                        statusLabel.stringValue = "\(index + 1)/\(selected.count): \(rail.name)"
                         activeCarousel = rail.name
-                        if rail.skipContent { statuses[rail.name] = "Order only"; log("\(rail.name): content skipped.") }
+                        if !available.contains(where: { $0.position == rail.position }) { /* Already reported; continue with identified rails. */ }
+                        else if rail.skipContent { statuses[rail.name] = "Order only"; log("\(rail.name): content skipped.") }
                         else {
                             do { try await updateContent(rail) }
                             catch {
-                                if !testOnly { throw error }
-                                try checkCancelled()
-                                statuses[rail.name] = "Test failed"; log("TEST FAILED \(rail.name): \(error.localizedDescription)")
-                                reportEntries.append(["kind": "issue", "carousel": rail.name, "reason": error.localizedDescription])
-                                try await freshOverview()
+                                try await recoverCarousel(rail, error: error)
                             }
                         }
-                        progress.doubleValue = Double(index + 1) / Double(sheet.rails.count) * 85
+                        progress.doubleValue = Double(index + 1) / Double(selected.count) * 85
                         table.reloadData()
                     }
                 }
+                try await returnToOverview()
+                let latest = try await call("overviewSnapshot", ["names": [reservedRail] + available.map(\.name)])
+                let remaining = try availableRails(available, existing: latest["order"] as? [String] ?? [])
+                var target = [reservedRail] + remaining.map(\.name)
+                if targeted && !preservePositions { target = try await stageSelectedOrder(remaining) }
                 if testOnly {
-                    try await returnToOverview()
-                    try await stageOrder([reservedRail] + sheet.rails.map(\.name))
-                    log("TEST VERIFIED: complete storefront carousel order, Top 10 first, and extra rails preserved; no publish submitted.")
+                    if !targeted { try await stageOrder(target) }
+                    log(targeted ? "TEST VERIFIED: selected scope checked; no publish submitted." : "TEST VERIFIED: complete storefront carousel order, Top 10 first, and extra rails preserved; no publish submitted.")
                     try await freshOverview()
-                    statusLabel.stringValue = "Test complete • \(verifiedDrafts) drafts verified • \(unresolved.count) unresolved • \(statuses.values.filter { $0 == "Test failed" }.count) failed"
+                    statusLabel.stringValue = "Test complete • \(verifiedDrafts) drafts verified • \(unresolved.count) unresolved • \(reportEntries.filter { $0["kind"] as? String == "issue" }.count) carousel issues"
                     log("TEST COMPLETE: no carousel or storefront saves were submitted; final unsaved draft discarded.")
                     busy = false; self.testOnly = false; table.reloadData(); updateControls(); return
                 }
                 try await returnToOverview()
-                let target = [reservedRail] + sheet.rails.map(\.name)
-                try await stageOrder(target)
+                if !targeted { try await stageOrder(target) }
                 let state = try await call("state")
-                let pending = state["publishEnabled"] as? Bool == true
+                let pending = !preservePositions && state["publishEnabled"] as? Bool == true
                 stagedOrder = pending ? target : nil
                 progress.doubleValue = 100
-                statusLabel.stringValue = pending ? "Content verified • Order ready to publish" : "Complete • Order already matches"
+                statusLabel.stringValue = preservePositions ? "Selected content complete • Storefront order kept" : (pending ? "Finished • Order ready to publish" : "Complete • Order already matches")
+                let issues = reportEntries.filter { $0["kind"] as? String == "issue" }.count
+                if issues > 0 { statusLabel.stringValue += " • \(issues) carousel issues" }
                 if !unresolved.isEmpty { statusLabel.stringValue += " • \(unresolved.count) unresolved" }
                 log(pending ? "Final order verified in the editor. Click Publish Order to apply it." : "No storefront order changes needed.")
             } catch {
@@ -487,10 +528,30 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         }
     }
 
-    func verifyTargetNames(_ rails: [Rail], existing: [String]) throws {
-        for name in [reservedRail] + rails.map(\.name) {
-            guard existing.filter({ normalized($0) == normalized(name) }).count == 1 else { throw AppFailure("Cannot match one existing carousel named \(name). No content has been changed.") }
+    func availableRails(_ rails: [Rail], existing: [String]) throws -> [Rail] {
+        guard existing.filter({ normalized($0) == normalized(reservedRail) }).count == 1, normalized(existing.first ?? "") == normalized(reservedRail) else { throw AppFailure("Cannot verify Top 10 uniquely at position 1. No content has been changed.") }
+        return rails.filter { rail in
+            let count = existing.filter { normalized($0) == normalized(rail.name) }.count
+            if count == 1 { return true }
+            let status = count == 0 ? "Skipped: missing carousel" : "Skipped: ambiguous carousel"
+            if statuses[rail.name] != status {
+                statuses[rail.name] = status
+                let reason = count == 0 ? "No existing carousel matches this name. Carousel skipped; remaining carousels will continue." : "Multiple existing carousels match this name. Carousel skipped; remaining carousels will continue."
+                reportEntries.append(["kind": "issue", "position": rail.position, "carousel": rail.name, "reason": reason]); log("\(rail.name): \(reason)")
+            }
+            return false
         }
+    }
+    func recoverCarousel(_ rail: Rail, error: Error) async throws {
+        try checkCancelled()
+        let uncertain = ["publish", "schedule", "verify saved"].contains(contentPhase)
+        let completed = contentPhase == "complete"
+        statuses[rail.name] = completed ? "Saved; follow-up issue" : (uncertain ? "Save not verified" : "Not saved: error")
+        let outcome = completed ? "Content was saved and verified; returning to a fresh Overview." : (uncertain ? "Save outcome not verified; it will not be resubmitted." : "This carousel was not saved.")
+        let reason = "\(error.localizedDescription) \(outcome) Continuing with remaining carousels."
+        reportEntries.append(["kind": "issue", "position": rail.position, "carousel": rail.name, "title": activeTitle, "reason": reason]); log("\(rail.name): \(reason)")
+        try await freshOverview()
+        contentPhase = ""
     }
     func resolveExisting(_ target: String, pins: [String]) -> String? {
         let aliases = ["whc": "When Hope Calls", "iggyandmrkrik": "Iggy and Mr. Kirk", "acindereallachristmasball": "A Cinderella Christmas Ball", "watchmaker": "Ainsley McGregor Mysteries: A Case for the Watchmaker", "athousandtomorrows": "Karen Kingsburys A Thousand Tomorrows"]
@@ -503,6 +564,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         return pins.first(where: { base($0) == normalized(canonical) })
     }
     func updateContent(_ rail: Rail) async throws {
+        contentPhase = "open"; activeTitle = ""
+        let orderBefore = preservePositions ? (try await call("order")["order"] as? [String] ?? []) : nil
+        let savePosition: Int
+        if let orderBefore = orderBefore {
+            guard let index = orderBefore.firstIndex(where: { normalized($0) == normalized(rail.name) }), index > 0 else { throw AppFailure("Cannot identify the current carousel position.") }
+            savePosition = index + 1
+        } else { savePosition = rail.position }
         statuses[rail.name] = "Checking"; table.reloadData()
         try await openEditor(rail)
         let before = try await call("pins")["pins"] as? [String] ?? []
@@ -554,7 +622,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         guard Set(targets.map(normalized)).count == targets.count else { throw AppFailure("Two workbook titles resolve to the same catalog title on \(rail.name).") }
         statuses[rail.name] = "Updating"; table.reloadData()
         _ = try await call("clearSearch")
-        for (index, title) in targets.enumerated() { _ = try await call("moveTitle", ["title": title, "position": index]) }
+        contentPhase = "reorder"
+        for (index, title) in targets.enumerated() { activeTitle = title; _ = try await call("moveTitle", ["title": title, "position": index]) }
         let validation = ["before": before, "targets": targets, "additions": additions]
         let checked = try await call("titleCheck", validation)
         guard checked["ok"] as? Bool == true else { throw AppFailure("\(rail.name): \(checked["detail"] as? String ?? "Title validation failed"). No carousel was saved.") }
@@ -568,18 +637,22 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
             log("TEST VERIFIED \(rail.name): target order, complete inventory, and remaining-title order; no save submitted.")
             try await returnToOverview(); return
         }
-        _ = try await call("publishCarousel")
+        contentPhase = "publish"; _ = try await call("publishCarousel")
         _ = try await waitForState("dialog")
-        _ = try await call("schedule", ["position": rail.position])
+        contentPhase = "schedule"; _ = try await call("schedule", ["position": savePosition])
         _ = try await waitForState("navigationReady", timeout: 60)
         try await pause(800)
         try await returnToOverview()
         try await openEditor(rail)
-        let saved = try await call("titleCheck", validation)
+        contentPhase = "verify saved"; let saved = try await call("titleCheck", validation)
         guard saved["ok"] as? Bool == true else { throw AppFailure("Saved titles did not verify on \(rail.name): \(saved["detail"] as? String ?? "Title validation failed"). Check the carousel in Slate.") }
         completedRails += 1; statuses[rail.name] = partial ? "Saved (partial)" : "Saved"
-        log("\(rail.name): saved and verified \(targets.count)/\(rail.titles.count) matched titles (Column A position \(rail.position)); all existing titles preserved.")
-        try await returnToOverview()
+        log("\(rail.name): saved and verified \(targets.count)/\(rail.titles.count) matched titles (storefront position \(savePosition), Column A \(rail.position)); all existing titles preserved.")
+        contentPhase = "complete"; try await returnToOverview()
+        if let orderBefore = orderBefore {
+            let afterOrder = try await call("order")["order"] as? [String] ?? []
+            guard afterOrder.map(normalized) == orderBefore.map(normalized) else { throw AppFailure("Content saved, but storefront order changed during the targeted update. Review it before publishing.") }
+        }
     }
     func unresolvedTitle(_ rail: Rail, title: String, detail: String) async throws {
         let message = "\(rail.name): skipped title \(title) (\(detail)); continuing with other titles in this carousel."
@@ -610,6 +683,29 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
             guard order.indices.contains(index), normalized(order[index]) == normalized(name) else { throw AppFailure("Could not place \(name) in the expected storefront slot.") }
         }
         log("Storefront order staged. Extra rails preserved after the sheet rails.")
+    }
+    func stageSelectedOrder(_ rails: [Rail]) async throws -> [String] {
+        var order = try await call("order")["order"] as? [String] ?? []
+        let expected = try selectedCarouselOrder(order, rails: rails)
+        if order.map(normalized) == expected.map(normalized) { return expected }
+        for rail in rails {
+            var moves = 0
+            while let source = order.firstIndex(where: { normalized($0) == normalized(rail.name) }), source < order.count - 1 {
+                guard moves < order.count else { throw AppFailure("Selected-carousel reorder did not converge.") }
+                order = try await call("moveRail", ["name": rail.name, "position": order.count - 1, "direction": "down"])["order"] as? [String] ?? []
+                moves += 1
+            }
+        }
+        for rail in rails.sorted(by: { $0.position < $1.position }) {
+            var moves = 0
+            while let source = order.firstIndex(where: { normalized($0) == normalized(rail.name) }), source > rail.position - 1 {
+                guard moves < order.count else { throw AppFailure("Selected-carousel reorder did not converge.") }
+                order = try await call("moveRail", ["name": rail.name, "position": rail.position - 1])["order"] as? [String] ?? []
+                moves += 1
+            }
+        }
+        guard order.map(normalized) == expected.map(normalized) else { throw AppFailure("Selected-carousel order did not verify. Nothing was published.") }
+        return expected
     }
     @objc func stopUpdate() {
         cancelled = true
@@ -658,7 +754,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
     }
     func htmlReport() throws -> String {
         guard let templateURL = Bundle.main.url(forResource: "report_template", withExtension: "html") else { throw AppFailure("The report template is missing. Download a fresh app copy.") }
-        let data: [String: Any] = ["version": version, "workbook": workbookName, "sheet": selectedSheet?.name ?? "", "saved": completedRails, "status": statusLabel.stringValue, "statuses": statuses, "entries": reportEntries, "logs": logs, "rails": selectedSheet?.rails.map { ["position": $0.position, "name": $0.name] as [String: Any] } ?? []]
+        let data: [String: Any] = ["version": version, "workbook": workbookName, "sheet": selectedSheet?.name ?? "", "scope": runScope, "saved": completedRails, "status": statusLabel.stringValue, "statuses": statuses, "entries": reportEntries, "logs": logs, "rails": selectedSheet?.rails.map { ["position": $0.position, "name": $0.name] as [String: Any] } ?? []]
         let json = try JSONSerialization.data(withJSONObject: data, options: [.sortedKeys])
         let payload = String(decoding: json, as: UTF8.self).replacingOccurrences(of: "<", with: "\\u003c").replacingOccurrences(of: ">", with: "\\u003e").replacingOccurrences(of: "&", with: "\\u0026")
         return try String(contentsOf: templateURL, encoding: .utf8).replacingOccurrences(of: "__REPORT_DATA__", with: payload)

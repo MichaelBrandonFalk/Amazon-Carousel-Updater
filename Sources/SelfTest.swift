@@ -7,6 +7,22 @@ extension AppController {
             guard let fixture = Bundle.main.url(forResource: "slate_fixture", withExtension: "html") else { throw AppFailure("Missing synthetic fixture") }
             webView.loadFileURL(fixture, allowingReadAccessTo: fixture.deletingLastPathComponent())
             _ = try await waitForState("overview")
+            scopePopup.selectItem(at: 1); scopeChanged()
+            let normalSize = window.frame.size
+            for size in [normalSize, window.minSize] {
+                window.setContentSize(NSSize(width: size.width, height: size.height))
+                window.contentView?.layoutSubtreeIfNeeded()
+                guard let root = window.contentView else { throw AppFailure("Missing window content") }
+                for control in [scopePopup, scopePositions, moveSelected, startButton, publishButton] as [NSView] {
+                    let bounds = control.convert(control.bounds, to: root)
+                    guard root.bounds.contains(bounds), bounds.height >= 14 else { throw AppFailure("Targeted update control is clipped: \(control)") }
+                }
+            }
+            window.setContentSize(normalSize); scopePopup.selectItem(at: 0); scopeChanged()
+            let originalScopeOrder = try await call("order")["order"] as? [String] ?? []
+            _ = try await stageSelectedOrder([Rail(position: originalScopeOrder.count, name: "Romance", titles: [], dynamic: false)])
+            _ = try await stageSelectedOrder([Rail(position: 2, name: "Romance", titles: [], dynamic: false)])
+            guard (try await call("order")["order"] as? [String]) == originalScopeOrder else { throw AppFailure("Selected-only up/down moves changed other rails") }
             let originalDocument = try await call("state")["documentID"] as? String
             try await freshOverview()
             guard try await call("state")["documentID"] as? String != originalDocument else { throw AppFailure("Fresh-run navigation reused the old page") }
@@ -63,6 +79,17 @@ extension AppController {
             let romance = Rail(position: 1, name: "Romance", titles: ["Target One", "Target Two", "Target Three", "Target Four", "Target Five", "Target Six"], dynamic: false)
             let collection = Rail(position: 2, name: "Faith Favorites", titles: ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta"], dynamic: false)
             let unresolvedRail = Rail(position: 3, name: "Unresolved rail", titles: ["Three", "Missing Catalog Title", "One"], dynamic: false)
+            let broken = Rail(position: 2, name: "Romance", titles: ["Target Three", "Target Two"], dynamic: false)
+            let absent = Rail(position: 4, name: "Absent carousel", titles: ["Any title"], dynamic: false)
+            sheets = [RailSheet(name: "Recovery test", rails: [broken, absent, collection])]
+            sheetPopup.removeAllItems(); sheetPopup.addItem(withTitle: "Recovery test"); sheetChanged()
+            _ = try await webView.evaluateJavaScript("localStorage.setItem('fixtureFailMoveFor','Romance')")
+            beginUpdate(testOnly: true)
+            await currentTask?.value
+            guard statuses["Romance"] == "Not saved: error", statuses["Absent carousel"] == "Skipped: missing carousel", statuses["Faith Favorites"] == "Draft verified" else { throw AppFailure("Carousel failure or missing rail stopped the remaining workbook") }
+            guard reportEntries.contains(where: { ($0["carousel"] as? String) == "Romance" && ($0["title"] as? String) == "Target Three" }) else { throw AppFailure("Failed title was not reported") }
+            guard (try await webView.evaluateJavaScript("data.saved.length")) as? Int == 0 else { throw AppFailure("Failed or no-save carousel was saved") }
+            _ = try await webView.evaluateJavaScript("localStorage.removeItem('fixtureFailMoveFor')")
             sheets = [RailSheet(name: "Synthetic weekly sheet", rails: [romance, collection, unresolvedRail])]
             workbookName = "synthetic-workbook.xlsx"; fileLabel.stringValue = workbookName
             sheetPopup.removeAllItems(); sheetPopup.addItem(withTitle: "Synthetic weekly sheet"); table.reloadData()
@@ -86,6 +113,12 @@ extension AppController {
             guard preservesExtras(before: ["A", "B", "B"], after: ["C", "A", "B", "B"], targets: ["C"]), !preservesExtras(before: ["A", "B", "B"], after: ["C", "A", "B"], targets: ["C"]) else { throw AppFailure("Duplicate-title preservation check failed") }
             let html = try htmlReport()
             guard html.contains("Titles not added"), html.contains("Missing Catalog Title"), html.contains("Season 1 selections") else { throw AppFailure("Readable HTML report did not include skipped-title detail") }
+            scopeCarousel.removeAllItems(); scopeCarousel.addItems(withTitles: sheets[0].rails.map(\.name)); scopeCarousel.selectItem(withTitle: "Faith Favorites"); scopePopup.selectItem(at: 2); moveSelected.state = .off; mode.selectedSegment = 0
+            _ = try await webView.evaluateJavaScript("[data.pins['Faith Favorites'][0],data.pins['Faith Favorites'][1]]=[data.pins['Faith Favorites'][1],data.pins['Faith Favorites'][0]];persist();localStorage.setItem('beforeTargetedOrder',JSON.stringify(data.order))")
+            beginUpdate(testOnly: false); await currentTask?.value
+            guard completedRails == 1, stagedOrder == nil, statuses["Romance"] == "Not selected" else { throw AppFailure("Targeted update processed an unselected carousel or staged a full reorder") }
+            guard (try await webView.evaluateJavaScript("JSON.stringify(data.order)===localStorage.getItem('beforeTargetedOrder')")) as? Bool == true else { throw AppFailure("Targeted titles-only update changed the storefront order") }
+            guard (try await webView.evaluateJavaScript("data.saved[data.saved.length-1].position")) as? Int == 3 else { throw AppFailure("Targeted title save did not retain its current position") }
             table.reloadData()
             progress.doubleValue = 100; statusLabel.stringValue = "Self-test passed • saves, preservation, search, ordering"
             log("SELF-TEST PASS: query + collection editors, exact search/add, keyboard reorder, original-title preservation, unresolved-title skip, Column A positions, publish and reload.")

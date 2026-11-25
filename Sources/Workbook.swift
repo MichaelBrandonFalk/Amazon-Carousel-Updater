@@ -23,6 +23,30 @@ func normalized(_ value: String) -> String {
     value.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.map(String.init).joined()
 }
 
+func railsForPositions(_ value: String, rails: [Rail]) throws -> [Rail] {
+    let tokens = value.replacingOccurrences(of: "–", with: "-").replacingOccurrences(of: "—", with: "-").components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+    var selected = Set<Int>()
+    for token in tokens {
+        guard token.range(of: "^\\d+(?:\\s*-\\s*\\d+)?$", options: .regularExpression) != nil else { throw AppFailure("Enter Column A positions such as 5-10 or 5,7,10.") }
+        let parts = token.components(separatedBy: "-").map { Int($0.trimmingCharacters(in: .whitespaces)) }
+        guard let low = parts[0], let high = parts.last ?? nil, low > 0, high >= low else { throw AppFailure("Use positive positions and ascending ranges.") }
+        let matches = rails.filter { $0.position >= low && $0.position <= high }
+        guard !matches.isEmpty else { throw AppFailure("No worksheet carousel matches position \(token).") }
+        selected.formUnion(matches.map(\.position))
+    }
+    return rails.filter { selected.contains($0.position) }
+}
+
+func selectedCarouselOrder(_ existing: [String], rails: [Rail]) throws -> [String] {
+    let keys = Set(rails.map { normalized($0.name) })
+    for rail in rails {
+        guard rail.position >= 2, rail.position <= existing.count, existing.filter({ normalized($0) == normalized(rail.name) }).count == 1 else { throw AppFailure("Cannot safely place \(rail.name) at position \(rail.position).") }
+    }
+    var result = existing.filter { !keys.contains(normalized($0)) }
+    for rail in rails.sorted(by: { $0.position < $1.position }) { result.insert(existing.first { normalized($0) == normalized(rail.name) }!, at: rail.position - 1) }
+    return result
+}
+
 private final class XMLReader: NSObject, XMLParserDelegate {
     var start: ((String, [String: String]) -> Void)?
     var end: ((String) -> Void)?

@@ -13,6 +13,16 @@ function render(state) {
   $('sheet').value = String(state.selected);
   $('sheet').disabled = state.busy || !state.sheets.length || pending;
   const sheet = state.sheets[state.selected];
+  const scope = state.scope || { mode: 'all', positions: '', name: '' };
+  $('scope-mode').value = scope.mode; $('scope-positions').value = scope.positions;
+  const names = sheet?.rails.map(r => r.name) || [];
+  if (JSON.stringify(Array.from($('scope-carousel').options, o => o.value)) !== JSON.stringify(names)) $('scope-carousel').replaceChildren(...names.map(name => new Option(name, name)));
+  if (scope.name && names.includes(scope.name)) $('scope-carousel').value = scope.name;
+  $('scope-positions').hidden = scope.mode !== 'positions'; $('scope-carousel').hidden = scope.mode !== 'one';
+  $('move-selected-label').hidden = scope.mode === 'all'; $('move-selected').checked = state.moveSelected;
+  const full = document.querySelector('input[name="mode"]:checked').value === 'full';
+  $('move-selected').disabled = state.busy || pending || !full;
+  $('scope-hint').textContent = scope.mode === 'all' ? 'Content saves apply immediately. Publish Order applies the final storefront order.' : (!full ? 'Only selected carousels move; unselected titles are untouched.' : (state.moveSelected ? 'Selected contents update; Schedule uses Column A positions.' : 'Only selected titles change. Current storefront order is kept.'));
   $('rails').replaceChildren(...(sheet?.rails || []).map(rail => {
     const row = document.createElement('tr'); row.title = rail.titles.join('\n');
     for (const [index, text] of [rail.position, rail.name, state.statuses[rail.name] || (rail.dynamic ? 'Dynamic' : `${rail.titles.length} titles`)].entries()) {
@@ -22,7 +32,7 @@ function render(state) {
     }
     return row;
   }));
-  for (const id of ['workbook', 'mode', 'open', 'back', 'reload', 'settings', 'export', 'remember', 'forget']) $(id).disabled = state.busy || pending;
+  for (const id of ['workbook', 'mode', 'scope-mode', 'scope-positions', 'scope-carousel', 'open', 'back', 'reload', 'settings', 'export', 'remember', 'forget']) $(id).disabled = state.busy || pending;
   $('run').disabled = state.busy || !sheet || pending; $('stop').disabled = !state.busy;
   $('publish').disabled = state.busy || !state.staged || pending;
   $('progress').value = state.progress; $('status').textContent = state.status;
@@ -45,6 +55,9 @@ window.updater.onState(render);
 for (const id of ['workbook', 'open', 'back', 'reload', 'stop', 'publish', 'export', 'forget']) $(id).addEventListener('click', () => act(id));
 $('remember').addEventListener('change', () => act('remember', $('remember').checked));
 $('sheet').addEventListener('change', () => act('sheet', Number($('sheet').value)));
+const scopeChanged = () => act('scope', { mode: $('scope-mode').value, positions: $('scope-positions').value, name: $('scope-carousel').value, moveSelected: $('move-selected').checked });
+for (const id of ['scope-mode', 'scope-positions', 'scope-carousel', 'move-selected']) $(id).addEventListener('change', scopeChanged);
+for (const radio of document.querySelectorAll('input[name="mode"]')) radio.addEventListener('change', () => render(current));
 $('run').addEventListener('click', () => act('run', document.querySelector('input[name="mode"]:checked').value));
 $('settings').addEventListener('click', async () => { await window.updater.action('modal', true); $('storefront-url').value = current.storefront; $('storefront-dialog').showModal(); });
 $('cancel-storefront').addEventListener('click', () => $('storefront-dialog').close());

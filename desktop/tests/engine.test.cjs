@@ -14,11 +14,11 @@ test('known aliases and existing seasons; no fuzzy new matches', () => {
 });
 function fakeAdapter(rejectPublish = false) {
   let saved = [reservedRail, 'Extras', 'Romance'], order = saved.slice(); const calls = [];
-  return { calls, verificationPause: 0, async reload() { order = saved.slice(); }, async call(command, input) {
+  return { calls, verificationPause: 0, async freshOverview() { calls.push('freshOverview'); order = saved.slice(); }, async reload() { order = saved.slice(); }, async call(command, input) {
     calls.push(command);
     if (command === 'state') return { overview: true, navigationReady: true, order: order.slice(), publishEnabled: JSON.stringify(order) !== JSON.stringify(saved) };
-    if (command === 'order') return { order: order.slice() };
-    if (command === 'moveRail') { const source = order.indexOf(input.name); [order[source], order[source - 1]] = [order[source - 1], order[source]]; return { order: order.slice() }; }
+    if (command === 'order' || command === 'overviewSnapshot') return { order: order.slice() };
+    if (command === 'moveRail') { const source = order.indexOf(input.name), next = source + (input.direction === 'down' ? 1 : -1); [order[source], order[next]] = [order[next], order[source]]; return { order: order.slice() }; }
     if (command === 'publishStorefront' && !rejectPublish) saved = order.slice();
     if (command === 'verifySavedOrder' && JSON.stringify(order) !== JSON.stringify(input.expected)) throw Error('Saved storefront order differs after reload');
     return {};
@@ -29,7 +29,7 @@ test('order-only keeps Top 10, preserves extra rails and waits for separate publ
   const adapter = fakeAdapter(), engine = new Engine(adapter);
   await engine.run(sheet, false);
   assert.deepEqual(engine.staged, [reservedRail, 'Romance']);
-  assert.deepEqual(adapter.calls.filter(c => !['resume', 'state', 'order', 'moveRail'].includes(c)), []);
+  assert.deepEqual(adapter.calls.filter(c => !['resume', 'state', 'order', 'moveRail', 'overviewSnapshot', 'freshOverview'].includes(c)), []);
   await engine.publish(); assert.equal(engine.status, 'Published and verified');
   await engine.run(sheet, false); assert.equal(engine.staged, null);
 });
@@ -38,10 +38,12 @@ test('a publish toast without persisted order is a failure', async () => {
   await assert.rejects(engine.publish(), /differs after reload/);
   assert.equal(engine.status, 'Needs attention'); assert.equal(engine.staged, null);
 });
-test('missing rails stop before content changes', async () => {
+test('missing rails are logged and remaining identified carousels still run', async () => {
   const adapter = fakeAdapter(), engine = new Engine(adapter);
-  await assert.rejects(engine.run({ name: 'Week', rails: [{ name: 'Missing', titles: ['Title'] }] }, true), /Cannot match/);
-  assert.equal(adapter.calls.includes('open'), false); assert.equal(engine.busy, false);
+  const processed = []; engine.updateContent = async rail => processed.push(rail.name);
+  await engine.run({ name: 'Week', rails: [{ name: 'Missing', position: 2, titles: ['Title'] }, ...sheet.rails] }, true);
+  assert.deepEqual(processed, ['Romance']); assert.equal(engine.statuses.Missing, 'Skipped: missing carousel'); assert.equal(engine.busy, false);
+  assert.deepEqual(engine.staged, [reservedRail, 'Romance']); assert.equal(engine.entries.filter(e => e.carousel === 'Missing').length, 1);
 });
 test('stop is honored before the next operation', async () => {
   const engine = new Engine(fakeAdapter()); await engine.stop();
@@ -82,7 +84,7 @@ test('retry from an editor returns to Overview instead of waiting on the wrong p
 
 function contentEngine({ chooseFailure = false, unsafeAddition = false, seasonFallback = false } = {}) {
   const original = ['Keep', 'Found B', 'Keep', 'Found A', 'Tail']; let pins = original.slice();
-  const writes = [];
+  const writes = [], positions = [];
   const adapter = { async call(command, input) {
     if (command === 'pins') return { pins: pins.slice() };
     if (command === 'search') return { matchType: seasonFallback ? 'season1' : 'exact', matches: input.title === 'New Title' ? [{ title: seasonFallback ? 'New Title - Season 1' : 'New Title' }] : [] };
@@ -94,11 +96,12 @@ function contentEngine({ chooseFailure = false, unsafeAddition = false, seasonFa
     if (command === 'moveTitle') { const from = pins.indexOf(input.title); pins.splice(input.position, 0, pins.splice(from, 1)[0]); }
     if (command === 'titleCheck') return { pins: pins.slice(), ok: JSON.stringify(pins.slice(0, input.targets.length)) === JSON.stringify(input.targets) && preservesExtras(input.before, pins, input.targets) };
     if (command === 'state') return { navigationReady: true };
-    if (command === 'schedule') writes.push(pins.slice());
+    if (command === 'order') return { order: [reservedRail, 'Other rail', 'Synthetic'] };
+    if (command === 'schedule') { positions.push(input.position); writes.push(pins.slice()); }
     return {};
   } };
   const engine = new Engine(adapter); engine.open = async () => {}; engine.overview = async () => {}; engine.wait = async () => ({}); engine.pause = async () => {};
-  return { engine, original, writes, pins: () => pins.slice() };
+  return { engine, original, writes, positions, pins: () => pins.slice() };
 }
 for (const missingPosition of [0, 1, 3]) test(`missing title at slot ${missingPosition + 1} still saves other matched titles`, async () => {
   const run = contentEngine(); const titles = ['Found A', 'New Title', 'Found B']; titles.splice(missingPosition, 0, 'Missing');
@@ -145,4 +148,59 @@ test('stale first reload is rechecked without publishing again', async () => {
   const engine = new Engine(adapter); await engine.run(sheet, false); await engine.publish();
   assert.equal(engine.status, 'Published and verified'); assert.equal(observations, 2);
   assert.equal(adapter.calls.filter(c => c === 'publishStorefront').length, 1);
+});
+for (const failure of ['verifyTitleMove: Complete list did not verify', 'waitTitleStep: Slate did not reach the expected page state']) test(`${failure}: recover draft and continue without retrying the failed carousel`, async () => {
+  const adapter = fakeAdapter(), engine = new Engine(adapter), processed = [];
+  engine.updateContent = async rail => { engine.phase = 'reorder'; engine.activeTitle = 'Synthetic title'; processed.push(rail.name); if (rail.name === 'Romance') throw Error(failure); engine.statuses[rail.name] = 'Saved'; };
+  await engine.run({ name: 'Week', rails: [sheet.rails[0], { name: 'Extras', position: 2, titles: ['Other'] }] }, true);
+  assert.deepEqual(processed, ['Romance', 'Extras']); assert.equal(engine.statuses.Romance, 'Not saved: error');
+  assert.equal(adapter.calls.filter(c => c === 'freshOverview').length, 2); assert.equal(engine.entries[0].title, 'Synthetic title');
+  assert.equal(adapter.calls.includes('publishCarousel'), false); assert.match(engine.status, /carousel issues/);
+});
+test('a failure after save submission is reported as unverified, never retried, and later rails continue', async () => {
+  const engine = new Engine(fakeAdapter()), processed = [];
+  engine.updateContent = async rail => { processed.push(rail.name); engine.phase = 'schedule'; if (rail.name === 'Romance') throw Error('Connection interrupted'); };
+  await engine.run({ name: 'Week', rails: [sheet.rails[0], { name: 'Extras', position: 2, titles: ['Other'] }] }, true);
+  assert.deepEqual(processed, ['Romance', 'Extras']); assert.equal(engine.statuses.Romance, 'Save not verified'); assert.match(engine.entries[0].reason, /will not be resubmitted/);
+});
+test('failed recovery stops the run instead of touching another carousel in a dirty browser', async () => {
+  const adapter = fakeAdapter(), engine = new Engine(adapter); let resets = 0, processed = [];
+  adapter.freshOverview = async () => { if (++resets > 1) throw Error('Sign-in required'); };
+  engine.updateContent = async rail => { processed.push(rail.name); engine.phase = 'reorder'; throw Error('Bad drag'); };
+  await assert.rejects(engine.run({ name: 'Week', rails: [sheet.rails[0], { name: 'Extras', titles: ['Other'] }] }, true), /Sign-in required/);
+  assert.deepEqual(processed, ['Romance']); assert.equal(engine.staged, null);
+});
+test('Stop during a failed carousel is never swallowed by continuation', async () => {
+  const engine = new Engine(fakeAdapter()), processed = [];
+  engine.updateContent = async rail => { processed.push(rail.name); engine.cancelled = true; throw Error('Interrupted'); };
+  await assert.rejects(engine.run({ name: 'Week', rails: [sheet.rails[0], { name: 'Extras', titles: ['Other'] }] }, true), /Stopped/);
+  assert.deepEqual(processed, ['Romance']); assert.equal(engine.status, 'Stopped');
+});
+test('ambiguous carousels are skipped without selecting either copy', () => {
+  const engine = new Engine(fakeAdapter());
+  const selected = engine.verifyNames([{ name: 'Romance', position: 2 }, { name: 'Extras', position: 3 }], [reservedRail, 'Romance', 'Romance', 'Extras']);
+  assert.deepEqual(selected.map(r => r.name), ['Extras']); assert.match(engine.statuses.Romance, /ambiguous/);
+  assert.throws(() => engine.verifyNames([], ['Romance', reservedRail]), /Top 10/);
+});
+test('targeted titles-only run processes only selected carousels and does not stage a global reorder', async () => {
+  const adapter = fakeAdapter(), engine = new Engine(adapter), processed = [];
+  engine.updateContent = async rail => processed.push(rail.name);
+  await engine.run({ name: 'Week', rails: [{ name: 'Romance', position: 8, titles: ['A'] }, { name: 'Extras', position: 3, titles: ['B'] }] }, true, { scope: { mode: 'positions', positions: '8' } });
+  assert.deepEqual(processed, ['Romance']); assert.equal(engine.statuses.Extras, 'Not selected'); assert.equal(engine.staged, null); assert.equal(engine.preservePositions, true);
+  assert.equal(adapter.calls.includes('moveRail'), false);
+});
+test('targeted order-only run moves selected rails while retaining unselected relative order', async () => {
+  const engine = new Engine(fakeAdapter());
+  await engine.run({ name: 'Week', rails: [{ name: 'Romance', position: 2, titles: [] }, { name: 'Extras', position: 3, titles: [] }] }, false, { scope: { mode: 'one', name: 'Romance' } });
+  assert.deepEqual(engine.staged, [reservedRail, 'Romance', 'Extras']);
+});
+test('targeted title save retains the actual position instead of using a different Column A value', async () => {
+  const run = contentEngine(); run.engine.preservePositions = true;
+  await run.engine.updateContent({ name: 'Synthetic', position: 8, titles: ['Found A'] });
+  assert.deepEqual(run.positions, [3]); assert.equal(run.writes.length, 1);
+});
+test('selected-only downward moves preserve Top 10 and unselected relative order', async () => {
+  const engine = new Engine(fakeAdapter());
+  await engine.run({ name: 'Week', rails: [{ name: 'Extras', position: 3, titles: [] }] }, false, { scope: { mode: 'one', name: 'Extras' } });
+  assert.deepEqual(engine.staged, [reservedRail, 'Romance', 'Extras']);
 });

@@ -11,6 +11,16 @@ struct WorkbookTests {
         precondition(rails[0].name == "Romance", "Shared string names must resolve")
         precondition(rails[1].titles == ["Alpha & Beta", "Second Title"], "Inline XML, whitespace, declared title limit")
         precondition(rails[2].dynamic && rails[2].skipContent, "Dynamic rails must skip content edits")
+        let scopeRails = (2...13).map { Rail(position: $0, name: "Rail \($0)", titles: [], dynamic: false) }
+        let ranged = try railsForPositions("5-10", rails: scopeRails)
+        let listed = try railsForPositions("5,7-8,7", rails: scopeRails)
+        precondition(ranged.map(\.position) == [5,6,7,8,9,10], "Use Column A positions, not worksheet row numbers")
+        precondition(listed.map(\.position) == [5,7,8], "Deduplicate overlapping selections")
+        for input in ["", "0", "8-5", "5.5", "99", "5,99", "5;8"] {
+            do { _ = try railsForPositions(input, rails: scopeRails); fatalError("Invalid scope accepted") } catch {}
+        }
+        let planned = try selectedCarouselOrder(["Top 10 in the U.S.", "B", "Other", "Other", "A", "Tail"], rails: [Rail(position: 3, name: "A", titles: [], dynamic: false), Rail(position: 5, name: "B", titles: [], dynamic: false)])
+        precondition(planned == ["Top 10 in the U.S.", "Other", "A", "Other", "B", "Tail"], "Keep unselected relative order and duplicates")
         do {
             _ = try WorkbookReader(url: folder.appendingPathComponent("duplicate.xlsx")).sheets()
             fatalError("Duplicate positions must be rejected")

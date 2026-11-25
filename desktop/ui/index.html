@@ -9,7 +9,11 @@
   <button id="workbook">Choose Workbook</button><p id="filename">No workbook selected</p>
   <label class="sr-only" for="sheet">Weekly worksheet</label><select id="sheet" disabled><option>No worksheet</option></select>
   <fieldset id="mode"><legend class="sr-only">Update mode</legend><label><input type="radio" name="mode" value="full" checked>Full Update</label><label><input type="radio" name="mode" value="order">Order Only</label></fieldset>
-  <p class="hint">Full Update saves each carousel immediately. Publish Order applies the final storefront order.</p>
+  <label class="sr-only" for="scope-mode">Update scope</label><select id="scope-mode"><option value="all">All carousels</option><option value="positions">Column A positions</option><option value="one">One carousel</option></select>
+  <input id="scope-positions" aria-label="Column A positions" placeholder="5-10 or 5,7,10" hidden>
+  <select id="scope-carousel" aria-label="Choose one carousel" hidden></select>
+  <label id="move-selected-label" hidden><input id="move-selected" type="checkbox"> Use sheet positions for selected carousels</label>
+  <p class="hint" id="scope-hint">Content saves apply immediately. Publish Order applies the final storefront order.</p>
   <div class="rail-table"><table><thead><tr><th>A</th><th>Carousel</th><th>Status</th></tr></thead><tbody id="rails"></tbody></table></div>
   <div class="actions"><button id="run" class="primary" disabled>Run Update</button><button id="stop" disabled>Stop</button></div>
   <button id="publish" disabled>Publish Order</button>

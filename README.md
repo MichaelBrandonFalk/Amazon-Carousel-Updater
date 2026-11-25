@@ -1,21 +1,21 @@
-# Amazon Carousel Updater V1.9
+# Amazon Carousel Updater V1.10
 
 Standalone desktop app for updating Amazon Slate from a weekly `.xlsx` workbook. Available for macOS, Windows, and Linux Mint. Every distribution includes its own Slate browser and runs without separately installing Codex, Python, Node.js, or an AI subscription/API key.
 
-[Download V1.9](https://github.com/MichaelBrandonFalk/Amazon-Carousel-Updater/releases/tag/v1.9) · [Public GitHub Pages download page](https://michaelbrandonfalk.github.io/Amazon-Carousel-Updater/) · [Separate Codex skill](https://github.com/MichaelBrandonFalk/Amazon-Rails-Update-Via-Spreadsheet)
+[Download V1.10](https://github.com/MichaelBrandonFalk/Amazon-Carousel-Updater/releases/tag/v1.10) · [Public GitHub Pages download page](https://michaelbrandonfalk.github.io/Amazon-Carousel-Updater/) · [Separate Codex skill](https://github.com/MichaelBrandonFalk/Amazon-Rails-Update-Via-Spreadsheet)
 
 ## Platform Downloads
 
 | Platform | File | Installation |
 | --- | --- | --- |
-| macOS 12+, Intel and Apple Silicon | `Amazon-Carousel-Updater-V1.9-macOS-universal.zip` | Unzip and move the app to Applications. |
-| Windows 10/11 x64 | `Amazon-Carousel-Updater-V1.9-Windows-x64-Setup.exe` | Run the installer; launch from the Start menu. No administrator install required. |
-| Linux Mint 21.x/22.x, Intel/AMD 64-bit | `Amazon-Carousel-Updater-V1.9-Linux-amd64.deb` | Open with Package Installer, then launch from the Mint menu. |
+| macOS 12+, Intel and Apple Silicon | `Amazon-Carousel-Updater-V1.10-macOS-universal.zip` | Unzip and move the app to Applications. |
+| Windows 10/11 x64 | `Amazon-Carousel-Updater-V1.10-Windows-x64-Setup.exe` | Run the installer; launch from the Start menu. No administrator install required. |
+| Linux Mint 21.x/22.x, Intel/AMD 64-bit | `Amazon-Carousel-Updater-V1.10-Linux-amd64.deb` | Open with Package Installer, then launch from the Mint menu. |
 
 Linux terminal installation from the download directory:
 
 ```bash
-sudo apt install ./Amazon-Carousel-Updater-V1.9-Linux-amd64.deb
+sudo apt install ./Amazon-Carousel-Updater-V1.10-Linux-amd64.deb
 amazon-carousel-updater
 ```
 
@@ -26,7 +26,7 @@ The `.deb` targets standard Ubuntu-based Mint, not ARM or a universal Linux bina
 1. Download and install the matching platform distribution above.
 2. Open the app, choose the weekly workbook, and select the visible weekly worksheet.
 3. For a reusable sign-in, select **Remember sign-in** before logging in once inside the app. Leave it off for a private session. Use **Storefront…** to change the storefront URL if needed.
-4. Choose **Full Update** or **Order Only**, then **Run Update**.
+4. Choose **Full Update** or **Order Only**. Leave **All carousels** selected, choose **Column A positions** (for example `5-10`, `5,7,10`, or `5`), or choose **One carousel** by name. Then click **Run Update**.
 5. Use **Export Report** for the readable HTML report. Its first table lists titles not added, the reason, and whether the rest of each carousel saved. Download that table as an Excel-compatible CSV if needed.
 6. Review any unresolved titles and the result. Click **Publish Order…** to apply the final carousel order.
 
@@ -43,7 +43,7 @@ Review the source and use your organization's approved installation process. Old
 - Missing or ambiguous titles are skipped individually and reported. Matched titles lead the carousel in workbook order, with no gaps; all other existing titles remain after them.
 - Catalog lookup failures and unchanged failed additions skip that title and continue within the same carousel. Uncertain inventory changes still block saving. A carousel with no matched titles is left unchanged; no guessed titles are added. Partial saves are identified in the report.
 - Broad series names reuse the first matching existing season on that rail. The app records the resolved title in its report. It does not guess new seasons from search results.
-- Scheduling uses the workbook Position value. The final storefront order separately reserves slot 1 for Top 10.
+- Scheduling uses the workbook Position value for all-carousel runs or when **Use sheet positions for selected carousels** is checked. Targeted Full Update keeps current positions by default. The final storefront order separately reserves slot 1 for Top 10.
 - Publish is verified after a reload. A success toast followed by a different saved order is a failure, not a completed update.
 
 Known explicit workbook aliases include WHC, Iggy and Mr. Krik, Watchmaker, and the demonstrated Cinderella spelling variant. Other unresolved spellings require a workbook correction.
@@ -86,11 +86,11 @@ Package on the matching operating system. Runtime dependencies are locked and pr
 
 ## Release Every Edit
 
-The app has its own version line, separate from the skill's v2.x versions. V1.9 is current; the next shipped edit is V1.10. V1.2 was an unpublished validation tag. V1.8 reads ordinal and title text separately, waits for the requested editor identity, and reloads Overview before each run to discard previous unsaved state. The public download site must use GitHub Pages, never ChatGPT Sites. The supplied artwork in `Resources/app-logo.png` is shared by all platforms, the site, and browser favicon; `bash scripts/build_icons.sh` regenerates Mac/site icon sizes. Electron packaging converts the same original artwork for Windows/Linux.
+The app has its own version line, separate from the skill's v2.x versions. V1.10 is current; the next shipped edit is V1.11. V1.2 was an unpublished validation tag. V1.8 reads ordinal and title text separately, waits for the requested editor identity, and reloads Overview before each run to discard previous unsaved state. The public download site must use GitHub Pages, never ChatGPT Sites. The supplied artwork in `Resources/app-logo.png` is shared by all platforms, the site, and browser favicon; `bash scripts/build_icons.sh` regenerates Mac/site icon sizes. Electron packaging converts the same original artwork for Windows/Linux.
 
-1. Run `python3 scripts/new_version.py 1.10` before the next release and update `release_notes.md` and the site's static download links.
+1. Run `python3 scripts/new_version.py 1.11` before the next release and update `release_notes.md` and the site's static download links.
 2. Build and test, commit the exact source, and push.
-3. Use the release workflow's manual dispatch to validate all platforms before tagging. Then tag that exact commit `v1.9` and push the tag.
+3. Use the release workflow's manual dispatch to validate all platforms before tagging. Then tag that exact commit `v1.11` and push the tag.
 4. GitHub Actions builds/tests all three platforms, creates a release with all installers plus SHA256 checksums, and only then deploys the matching GitHub Pages download site. A failing platform blocks publication. Old releases are retained.
 
 The download page reads per-platform release history from the public GitHub releases API and retains direct release links if that API is unavailable. `website/dist` is deployed to GitHub Pages by the release workflow (or a manual Pages dispatch), not immediately on every source push. A skill change is not automatically ported into the app; port and test applicable changes before shipping a new app version.
@@ -112,3 +112,13 @@ Existing pinned matches and unique exact catalog matches take precedence. If a b
 ## Readable run reports
 
 Exports are standalone local HTML files: Titles not added first, separate Other issues and Season 1 selections tables, per-carousel outcomes, and a collapsed technical log. The skipped-title table can be downloaded as an Excel-compatible CSV. Workbook text is rendered as text and CSV formula prefixes are neutralized. Reports contain private run data and must never be committed to GitHub.
+
+## Targeted updates and recovery
+
+Choose **Column A positions** to enter `5-10`, `5,7,10`, or one position. These are the Position values in Column A, not Excel row numbers. Choose **One carousel** to select a worksheet carousel by name. Invalid or empty selections are rejected before browser changes. Loading a different worksheet resets the scope to All carousels.
+
+Targeted **Full Update** edits only the selected content and keeps each carousel at its current storefront position. Check **Use sheet positions for selected carousels** to schedule those carousels at their Column A positions and stage their order. Targeted **Order Only** moves the selected carousels without editing titles. Unselected carousels retain their relative order; their displayed positions can shift when selected carousels move. Top 10 remains first. Publication still requires the separate Publish Order confirmation.
+
+A missing or ambiguous carousel is skipped and reported. A failed title move or preservation check blocks saving that carousel, records the affected title and error, reloads a fresh Overview to discard its draft, then continues with the remaining carousels. A save whose outcome cannot be verified is reported without resubmitting it. Stop, an unsafe Top 10 state, unsuccessful browser recovery, and final publication errors still stop the run. Check **Other issues** in the exported report for each affected carousel, title/step, and outcome.
+
+V1.10 validation uses synthetic workbooks and isolated embedded-browser fixtures, including both reported reorder failures, missing/ambiguous carousel continuation, selected-only up/down moves, current-position content saves, and no repeat submission after uncertain saves. Native control bounds are checked at normal and minimum window sizes. Direct Mac visual inspection was unavailable in the development session; automated native layout and browser tests provide the local checks. No live storefront saves were submitted for this release.

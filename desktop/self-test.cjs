@@ -18,6 +18,15 @@ async function runSelfTest({ engine, guest, win, setWorkbook }) {
     { position: 3, name: 'Faith Favorites', titles: ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta'], dynamic: false }
   ] };
   setWorkbook(sheet);
+  await win.webContents.executeJavaScript('act("scope",{mode:"positions",positions:"2-3",name:"",moveSelected:false})');
+  assert.equal(await win.webContents.executeJavaScript('document.querySelector("#scope-positions").value'), '2-3');
+  assert.equal(await win.webContents.executeJavaScript('document.querySelector("#scope-positions").hidden'), false);
+  await win.webContents.executeJavaScript('act("scope",{mode:"all",positions:"",name:"",moveSelected:false})');
+  const originalScopeOrder = (await engine.call('order')).order;
+  await engine.stageSelected([{ name: 'Romance', position: originalScopeOrder.length }]);
+  await engine.stageSelected([{ name: 'Romance', position: 2 }]);
+  assert.deepEqual((await engine.call('order')).order, originalScopeOrder, 'Selected-only up/down controls preserve all other rails');
+
   await guest.webContents.executeJavaScript('renderEditor("Romance")');
   const fallback = await engine.call('search', { title: 'Seasoned Show' });
   assert.equal(fallback.matchType, 'season1'); assert.equal(fallback.matches[0].title, 'Seasoned Show - Season 1');
@@ -55,6 +64,14 @@ async function runSelfTest({ engine, guest, win, setWorkbook }) {
   assert.equal(await guest.webContents.executeJavaScript('window.fixtureRemoveAttempts||0'), 0, 'Lost focus must never activate Remove');
   await guest.webContents.executeJavaScript('window.fixtureStealFocus=false');
   await guest.webContents.executeJavaScript('renderEditor("Romance")');
+  await guest.webContents.executeJavaScript('localStorage.setItem("fixtureFailDropFor","Romance")');
+  await engine.run({ name: 'Recovery', rails: [{ name: 'Romance', position: 2, titles: ['Target Three'] }, { name: 'Absent carousel', position: 4, titles: ['Anything'] }, sheet.rails[2]] }, true);
+  assert.equal(engine.statuses.Romance, 'Not saved: error');
+  assert.equal(engine.statuses['Absent carousel'], 'Skipped: missing carousel');
+  assert.equal(engine.statuses['Faith Favorites'], 'Saved');
+  assert.deepEqual(await guest.webContents.executeJavaScript('data.saved.map(r=>r.name)'), ['Faith Favorites'], 'Failed carousel must never be saved and later carousel must run');
+  await guest.webContents.executeJavaScript('localStorage.removeItem("fixtureFailDropFor");localStorage.removeItem("fixtureState")');
+  await engine.adapter.reload();
   await engine.run(sheet, true);
   assert.equal(engine.completed, 3); assert.equal(engine.unresolved.length, 1);
   assert.equal(engine.entries.filter(e => e.kind === 'not_added')[0].title, 'Missing Catalog Title');
@@ -72,6 +89,11 @@ async function runSelfTest({ engine, guest, win, setWorkbook }) {
   await engine.run(sheet, false);
   assert.equal(engine.completed, 0, 'Order-only must not save content');
   assert.equal((await guest.webContents.executeJavaScript('data.saved.length')), 3, 'Order-only must preserve content');
+  await guest.webContents.executeJavaScript('[data.pins["Faith Favorites"][0],data.pins["Faith Favorites"][1]]=[data.pins["Faith Favorites"][1],data.pins["Faith Favorites"][0]];persist();localStorage.setItem("beforeTargetedOrder",JSON.stringify(data.order))');
+  await engine.run(sheet, true, { scope: { mode: 'one', name: 'Faith Favorites' } });
+  assert.equal(engine.completed, 1); assert.equal(engine.staged, null); assert.equal(engine.statuses.Romance, 'Not selected');
+  assert.equal(await guest.webContents.executeJavaScript('JSON.stringify(data.order)===localStorage.getItem("beforeTargetedOrder")'), true);
+  assert.equal(await guest.webContents.executeJavaScript('data.saved.at(-1).position'), 4, 'Use the actual position, not Column A, for targeted titles-only saves');
   const ui = await win.webContents.executeJavaScript('({logo:document.querySelector("header img").naturalWidth,version:document.querySelector("#version").textContent,overflow:document.querySelector("header").scrollWidth>document.querySelector("header").clientWidth})');
   assert.ok(ui.logo > 0); assert.equal(ui.overflow, false); assert.match(ui.version, /^V\d+\.\d+ /);
 }

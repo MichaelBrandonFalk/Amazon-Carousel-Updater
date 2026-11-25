@@ -42,10 +42,11 @@ function renderEditor(name){lifted=null;current=name;titles=data.pins[name].slic
     event.preventDefault();
     const announce=message=>{document.getElementById('rbd-announcement-synthetic').textContent=message};
     if(event.code==='Escape'){lifted=null;renderRows();return}
-    if(window.fixtureIgnoreDrag)return;
+    if(window.fixtureIgnoreDrag||localStorage.getItem('fixtureFailMoveFor')===current)return;
     if(event.code==='Space'){
      if(!lifted){lifted={title,index:i,source:i,animating:false};announce('You have lifted the item in position '+(i+1));return}
      if(lifted.animating)return;
+     if(localStorage.getItem('fixtureFailDropFor')===current){lifted=null;renderRows();announce('Movement cancelled.');return}
      const move=lifted;lifted=null;
      setTimeout(()=>{titles.splice(move.source,1);titles.splice(move.index,0,move.title);window.fixtureDropCount=(window.fixtureDropCount||0)+1;renderRows();announce('You have dropped the item in position '+(move.index+1));
       if(window.fixtureTransientDrop){setTimeout(()=>{const tail=Array.from(list.children).slice(3);tail.reverse().forEach(row=>list.append(row));window.fixtureTransientCount=(window.fixtureTransientCount||0)+1},30);setTimeout(renderRows,450)}

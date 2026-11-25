@@ -128,6 +128,14 @@
     } catch { check(); }
     throw Error('Editor did not finish loading for ' + name + '; visible editor: ' + (latest?.editorName || '(not ready)') + '. No carousel was saved.');
   };
+  const overviewSnapshot = async ({ names = [] } = {}) => {
+    // A partially rendered Overview must not be mistaken for a missing rail.
+    try { await wait(() => railRows().length && names.every(name => order().filter(value => norm(value) === norm(name)).length === 1), 5000); }
+    catch { check(); }
+    let last = order(), since = Date.now();
+    await wait(() => { const current = order(); if (!same(current, last)) { last = current; since = Date.now(); } return current.length > 0 && Date.now() - since >= 700; }, 10000);
+    return { order: last };
+  };
   const verifySavedOrder = async ({ expected }) => {
     let since = Date.now();
     try {
@@ -258,7 +266,7 @@
     return { submitted: true };
   };
   window.ACU = {
-    state, waitEditor, verifySavedOrder, titleCheck, endTitleMove: () => { window.ACUTitleMove = null; return {}; }, order: () => ({ order: order() }), pins: async () => ({ pins: await settledPins(), editorName: editorName() }),
+    state, waitEditor, overviewSnapshot, verifySavedOrder, titleCheck, endTitleMove: () => { window.ACUTitleMove = null; return {}; }, order: () => ({ order: order() }), pins: async () => ({ pins: await settledPins(), editorName: editorName() }),
     resume: () => { window.ACUCancelled = false; return {}; },
     cancel: () => { window.ACUCancelled = true; return {}; },
     open: ({ name }) => {
@@ -273,13 +281,14 @@
       click(el);
       return {};
     },
-    moveRail: async ({ name, position }) => {
+    moveRail: async ({ name, position, direction = 'up' }) => {
       const source = order().findIndex(value => norm(value) === norm(name));
-      if (source < 0 || source <= position) throw Error('Unexpected carousel source position.');
+      const step = direction === 'down' ? 1 : -1;
+      if (order().filter(value => norm(value) === norm(name)).length !== 1 || source < 1 || position < 1 || (step < 0 ? source <= position : source >= position)) throw Error('Unexpected carousel source position.');
       const caret = railRows()[source].querySelectorAll('button.storefront-carousel-action-caret-button');
       if (caret.length !== 2) throw Error('Expected two carousel arrow controls.');
-      click(caret[1]);
-      await wait(() => norm(order()[source - 1]) === norm(name));
+      click(caret[step < 0 ? 1 : 0]);
+      await wait(() => norm(order()[source + step]) === norm(name));
       return { order: order() };
     },
     search, choose, prepareTitleMove, titleDragState, titleKeyTarget, waitTitleStep, verifyTitleMove,
