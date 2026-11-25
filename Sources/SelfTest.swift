@@ -7,6 +7,7 @@ extension AppController {
             guard let fixture = Bundle.main.url(forResource: "slate_fixture", withExtension: "html") else { throw AppFailure("Missing synthetic fixture") }
             webView.loadFileURL(fixture, allowingReadAccessTo: fixture.deletingLastPathComponent())
             _ = try await waitForState("overview")
+            guard moveSelected.state == .on else { throw AppFailure("Selected positions must default on") }
             scopePopup.selectItem(at: 1); scopeChanged()
             let normalSize = window.frame.size
             for size in [normalSize, window.minSize] {

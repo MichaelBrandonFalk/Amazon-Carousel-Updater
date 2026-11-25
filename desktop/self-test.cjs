@@ -18,6 +18,7 @@ async function runSelfTest({ engine, guest, win, setWorkbook }) {
     { position: 3, name: 'Faith Favorites', titles: ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta'], dynamic: false }
   ] };
   setWorkbook(sheet);
+  assert.equal(await win.webContents.executeJavaScript('document.querySelector("#move-selected").checked'), true, 'Selected positions must default on');
   await win.webContents.executeJavaScript('act("scope",{mode:"positions",positions:"2-3",name:"",moveSelected:false})');
   assert.equal(await win.webContents.executeJavaScript('document.querySelector("#scope-positions").value'), '2-3');
   assert.equal(await win.webContents.executeJavaScript('document.querySelector("#scope-positions").hidden'), false);
@@ -90,7 +91,7 @@ async function runSelfTest({ engine, guest, win, setWorkbook }) {
   assert.equal(engine.completed, 0, 'Order-only must not save content');
   assert.equal((await guest.webContents.executeJavaScript('data.saved.length')), 3, 'Order-only must preserve content');
   await guest.webContents.executeJavaScript('[data.pins["Faith Favorites"][0],data.pins["Faith Favorites"][1]]=[data.pins["Faith Favorites"][1],data.pins["Faith Favorites"][0]];persist();localStorage.setItem("beforeTargetedOrder",JSON.stringify(data.order))');
-  await engine.run(sheet, true, { scope: { mode: 'one', name: 'Faith Favorites' } });
+  await engine.run(sheet, true, { scope: { mode: 'one', name: 'Faith Favorites' }, moveSelected: false });
   assert.equal(engine.completed, 1); assert.equal(engine.staged, null); assert.equal(engine.statuses.Romance, 'Not selected');
   assert.equal(await guest.webContents.executeJavaScript('JSON.stringify(data.order)===localStorage.getItem("beforeTargetedOrder")'), true);
   assert.equal(await guest.webContents.executeJavaScript('data.saved.at(-1).position'), 4, 'Use the actual position, not Column A, for targeted titles-only saves');

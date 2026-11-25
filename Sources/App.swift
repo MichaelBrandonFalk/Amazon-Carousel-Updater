@@ -159,7 +159,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
         scopePopup.target = self; scopePopup.action = #selector(scopeChanged)
         scopePositions.placeholderString = "5-10 or 5,7,10"; scopePositions.setAccessibilityLabel("Column A positions")
         scopeCarousel.setAccessibilityLabel("Choose one carousel")
-        moveSelected.target = self; moveSelected.action = #selector(scopeChanged); moveSelected.font = .systemFont(ofSize: 11)
+        moveSelected.target = self; moveSelected.action = #selector(scopeChanged); moveSelected.font = .systemFont(ofSize: 11); moveSelected.state = .on
         let scopeBox = NSStackView(views: [scopePopup, scopePositions, scopeCarousel, moveSelected]); scopeBox.orientation = .vertical; scopeBox.alignment = .leading; scopeBox.spacing = 5; scopeBox.detachesHiddenViews = true
         sidebar.addArrangedSubview(scopeBox)
         let timing = scopeHint
@@ -304,7 +304,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSTableViewDataSourc
     @objc func sheetChanged() {
         statuses = [:]; stagedOrder = nil; completedRails = 0; verifiedDrafts = 0; unresolved = []
         reportEntries = []; activeCarousel = ""
-        scopePopup.selectItem(at: 0); scopePositions.stringValue = ""; moveSelected.state = .off
+        scopePopup.selectItem(at: 0); scopePositions.stringValue = ""; moveSelected.state = .on
         scopeCarousel.removeAllItems(); scopeCarousel.addItems(withTitles: selectedSheet?.rails.map(\.name) ?? [])
         table.reloadData(); statusLabel.stringValue = "\(selectedSheet?.rails.count ?? 0) rails • Top 10 stays first"
         updateControls()

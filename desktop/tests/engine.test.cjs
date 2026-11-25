@@ -185,7 +185,7 @@ test('ambiguous carousels are skipped without selecting either copy', () => {
 test('targeted titles-only run processes only selected carousels and does not stage a global reorder', async () => {
   const adapter = fakeAdapter(), engine = new Engine(adapter), processed = [];
   engine.updateContent = async rail => processed.push(rail.name);
-  await engine.run({ name: 'Week', rails: [{ name: 'Romance', position: 8, titles: ['A'] }, { name: 'Extras', position: 3, titles: ['B'] }] }, true, { scope: { mode: 'positions', positions: '8' } });
+  await engine.run({ name: 'Week', rails: [{ name: 'Romance', position: 8, titles: ['A'] }, { name: 'Extras', position: 3, titles: ['B'] }] }, true, { scope: { mode: 'positions', positions: '8' }, moveSelected: false });
   assert.deepEqual(processed, ['Romance']); assert.equal(engine.statuses.Extras, 'Not selected'); assert.equal(engine.staged, null); assert.equal(engine.preservePositions, true);
   assert.equal(adapter.calls.includes('moveRail'), false);
 });
@@ -202,5 +202,13 @@ test('targeted title save retains the actual position instead of using a differe
 test('selected-only downward moves preserve Top 10 and unselected relative order', async () => {
   const engine = new Engine(fakeAdapter());
   await engine.run({ name: 'Week', rails: [{ name: 'Extras', position: 3, titles: [] }] }, false, { scope: { mode: 'one', name: 'Extras' } });
+  assert.deepEqual(engine.staged, [reservedRail, 'Romance', 'Extras']);
+});
+
+test('targeted full update includes selected sheet positions unless titles-only is explicitly chosen', async () => {
+  const engine = new Engine(fakeAdapter()), processed = [];
+  engine.updateContent = async rail => processed.push(rail.name);
+  await engine.run({ name: 'Week', rails: [{ name: 'Romance', position: 2, titles: ['A'] }] }, true, { scope: { mode: 'one', name: 'Romance' } });
+  assert.deepEqual(processed, ['Romance']); assert.equal(engine.preservePositions, false);
   assert.deepEqual(engine.staged, [reservedRail, 'Romance', 'Extras']);
 });

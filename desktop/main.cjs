@@ -14,7 +14,7 @@ const fixtureURL = pathToFileURL(path.join(root, 'Resources/slate_fixture.html')
 const uiURL = 'carousel://ui/index.html';
 let win, guest, engine, driver, version, sheets = [], selected = 0, workbookName = '', storefront = defaultStorefront;
 let rememberSignIn = false;
-let scope = { mode: 'all', positions: '', name: '' }, moveSelected = false;
+let scope = { mode: 'all', positions: '', name: '' }, moveSelected = true;
 protocol.registerSchemesAsPrivileged([{ scheme: 'carousel', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
 function validStorefront(value) {
@@ -129,7 +129,7 @@ async function loadWorkbook() {
   const result = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: 'Excel workbook', extensions: ['xlsx'] }] });
   if (result.canceled) return;
   const parsed = await readWorkbook(result.filePaths[0]);
-  scope = { mode: 'all', positions: '', name: '' }; moveSelected = false;
+  scope = { mode: 'all', positions: '', name: '' }; moveSelected = true;
   sheets = parsed; selected = 0; workbookName = path.basename(result.filePaths[0]); engine.reset();
   engine.status = `${sheets[0].rails.length} rails - Top 10 stays first`; engine.log(`Loaded ${workbookName}. Workbook cells are used only as data.`);
 }
@@ -150,7 +150,7 @@ async function action(event, command, input) {
     case 'workbook': await loadWorkbook(); break;
     case 'sheet':
       if (!Number.isInteger(input) || !sheets[input]) throw Error('Select a valid worksheet.');
-      selected = input; scope = { mode: 'all', positions: '', name: '' }; moveSelected = false; engine.reset(); engine.status = `${sheets[selected].rails.length} rails - Top 10 stays first`; break;
+      selected = input; scope = { mode: 'all', positions: '', name: '' }; moveSelected = true; engine.reset(); engine.status = `${sheets[selected].rails.length} rails - Top 10 stays first`; break;
     case 'open': await guest.webContents.loadURL(storefront); break;
     case 'back': if (guest.webContents.navigationHistory.canGoBack()) guest.webContents.navigationHistory.goBack(); break;
     case 'reload': engine.staged = null; guest.webContents.reload(); break;

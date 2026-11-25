@@ -1,13 +1,15 @@
-# V1.10
+# V1.11
+
+V1.10 passed preflight but was not published: its release was cancelled to incorporate the requested selected-position default. Its tag is retained; no existing release was overwritten.
 
 - Continue after a failed title move, preservation check, or individual carousel operation. Record its title/step and outcome, discard its unsaved draft using a fresh Overview, and process the remaining carousels. Never save a failed preservation check or resubmit an uncertain save.
 - Skip missing or ambiguous carousels individually rather than aborting the workbook. Wait briefly for the Overview list to settle before deciding a match is missing. Keep Top 10 uniquely first.
 - Add targeted updates: Column A ranges (`5-10`), lists (`5,7,10`), a single position, or one carousel by name. Reject invalid selections before any browser changes.
-- Targeted Full Update keeps current storefront positions by default. An optional checkbox uses the selected sheet positions instead. Targeted Order Only moves selected carousels while preserving all unselected relative order and leaving title content untouched.
+- Targeted Full Update uses the selected sheet positions by default. Unchecking Use sheet positions for selected carousels keeps current storefront positions instead. Targeted Order Only moves selected carousels while preserving all unselected relative order and leaving title content untouched.
 - Show unselected, skipped, failed, partial, and unverified outcomes in the table and local report. Include Column A scope and the affected title/step in the report's Other issues table. Reset scope when changing worksheets.
 - Retain no-removal rules, title-by-title skips, Season 1 matching, local-only sign-in/report data, and separate final order publication confirmation. Stop or failed recovery still halts safely.
 
-Validation: 39 unit tests; native Mac and Electron synthetic browser tests for both reorder failure paths, missing carousel continuation, targeted content saves, and selected-only up/down controls; native normal/minimum control bounds. Packaged Windows and both Linux Mint Ubuntu bases gate release publication. Direct Mac visual inspection was unavailable; no production Slate save or publication was submitted for this release.
+Validation: 40 unit tests; native Mac and Electron synthetic browser tests for both reorder failure paths, missing carousel continuation, targeted content saves, and selected-only up/down controls; native normal/minimum control bounds. Packaged Windows and both Linux Mint Ubuntu bases gate release publication. Direct Mac visual inspection was unavailable; no production Slate save or publication was submitted for this release.
 
 ## V1.9
 

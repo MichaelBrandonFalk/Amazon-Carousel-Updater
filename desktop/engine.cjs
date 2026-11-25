@@ -198,7 +198,7 @@ class Engine {
     if (this.busy) throw Error('An update is already running.');
     const selected = selectRails(sheet.rails, options.scope);
     const targeted = options.scope && options.scope.mode !== 'all';
-    this.preservePositions = !!targeted && full && !options.moveSelected;
+    this.preservePositions = !!targeted && full && options.moveSelected === false;
     this.runScope = targeted ? (options.scope.mode === 'one' ? `Carousel: ${selected[0].name}` : `Column A: ${options.scope.positions}`) : 'All carousels';
     this.busy = true; this.cancelled = false; this.logs = []; this.reset();
     for (const rail of sheet.rails) if (!selected.includes(rail)) this.statuses[rail.name] = 'Not selected';
